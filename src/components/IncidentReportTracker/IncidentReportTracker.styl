@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2012-2017  Online-Go.com
+ * Copyright (C) 2012-2020  Online-Go.com
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU Affero General Public License as
@@ -43,6 +43,20 @@
         }
     }
 
+    .report-header {
+        display: flex;
+        flex-direction: row;
+        align-items: flex-end;
+        .report-id {
+            display: flex;
+            margin-top: auto;
+            padding-right: 1 em;
+        }
+        .unclaimed {
+            font-style: italic;
+        }
+    }
+
     .spread {
         display: flex;
         justify-content: space-between;
@@ -54,6 +68,10 @@
         margin-bottom: 1rem;
         border-bottom: 1px solid transparent;
         themed border-color shade3
+
+        h4.notes {
+            margin: 0.5em 0 0 0;
+        }
 
         .notes {
             user-select: text;

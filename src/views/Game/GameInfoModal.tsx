@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2012-2017  Online-Go.com
+ * Copyright (C) 2012-2020  Online-Go.com
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU Affero General Public License as
@@ -17,66 +17,247 @@
 
 import * as React from "react";
 import * as moment from "moment";
+import * as data from "data";
 import {_, pgettext, interpolate} from "translate";
-import {post, get} from "requests";
-import {openModal, Modal} from "components";
+import {post, get, patch, del} from "requests";
+import {openModal, Modal} from "Modal";
 import {timeControlDescription} from "TimeControl";
-import {GoEngine} from "goban";
 import {Player} from "Player";
-import {errorAlerter, rulesText} from "misc";
 import {handicapText} from "GameAcceptModal";
+import {errorAlerter, ignore, rulesText} from "misc";
+import {rankString} from 'rank_utils';
+import {browserHistory} from "ogsHistory";
+
+declare var swal;
+
+interface Events {
+}
 
 interface GameInfoModalProperties {
-    game: GoEngine;
+    config: any;
+    black: any;
+    white: any;
+    annulled: boolean;
+    creatorId: number;
 }
 
 
-export class GameInfoModal extends Modal<GameInfoModalProperties, {}> {
+export class GameInfoModal extends Modal<Events, GameInfoModalProperties, {}> {
     constructor(props) {
         super(props);
     }
 
-    render() {
-        const game = this.props.game;
 
-        let time_control_description = timeControlDescription(game.time_control);
+
+    save = (ev) => {
+        let config = this.props.config;
+        let review_id = config.review_id;
+        let game_id = config.game_id;
+
+        if (game_id) {
+            let settings = {
+                moderation_note: "Update game name",
+                name: config.game_name
+            };
+
+            post(`games/${this.props.config.game_id}/moderate`, settings)
+            .then(() => {
+                this.close();
+            })
+            .catch(errorAlerter);
+        }
+
+        if (review_id) {
+            let settings = {
+                'name': config.game_name,
+                'outcome': config.outcome,
+            };
+            if (config.black_player_id === 0 || !config.players?.black?.id) {
+                settings['black_player_name'] = config.players.black.name;
+                settings['black_player_rank'] = config.players.black.rank;
+                settings['black_player_pro'] = !!config.players.black.pro;
+            }
+            if (config.white_player_id === 0 || !config.players?.white?.id) {
+                settings['white_player_name'] = config.players.white.name;
+                settings['white_player_rank'] = config.players.white.rank;
+                settings['white_player_pro'] = !!config.players.white.pro;
+            }
+
+            patch(`reviews/${review_id}`, settings)
+            .then(() => {
+                this.close();
+            })
+            .catch(errorAlerter);
+        }
+    }
+
+    deleteReview = (ev) => {
+        let review_id = this.props.config.review_id;
+
+        if (review_id) {
+            swal({
+                text: _("Are you sure you wish to delete this board?"),
+                showCancelButton: true,
+            })
+            .then(() => {
+                console.log("Should be deleting");
+
+                del(`reviews/${review_id}`)
+                .then(() => {
+                    this.close();
+                    console.log(browserHistory.goBack());
+                })
+                .catch(errorAlerter);
+            })
+            .catch(ignore);
+        }
+    }
+
+    updateName = (ev) => {
+        this.props.config.game_name = ev.target.value;
+        this.forceUpdate();
+    }
+    updateBlackName = (ev) => {
+        this.props.config.players.black.name = ev.target.value;
+        this.forceUpdate();
+    }
+    updateBlackRank = (ev) => {
+        console.log(ev.target.value);
+        let rank = parseInt(ev.target.value);
+        let pro = ev.target.value.indexOf(".1") > 0;
+        console.log(rank, pro);
+        this.props.config.players.black.rank = rank;
+        this.props.config.players.black.pro = pro;
+        this.props.black.rank = rank;
+        this.props.black.pro = pro;
+        this.forceUpdate();
+    }
+    updateWhiteName = (ev) => {
+        this.props.config.players.white.name = ev.target.value;
+        this.forceUpdate();
+    }
+    updateWhiteRank = (ev) => {
+        console.log(ev.target.value);
+        let rank = parseInt(ev.target.value);
+        let pro = ev.target.value.indexOf(".1") > 0;
+        this.props.config.players.white.rank = rank;
+        this.props.config.players.white.pro = pro;
+        this.props.white.rank = rank;
+        this.props.white.pro = pro;
+        this.forceUpdate();
+    }
+    updateOutcome = (ev) => {
+        this.props.config.outcome = ev.target.value;
+        this.forceUpdate();
+    }
+
+    render() {
+        let config = this.props.config;
+        let user = data.get('user');
+        let review_id = config.review_id;
+        let game_id = config.game_id;
+        let editable = ((review_id && this.props.creatorId === user.id) || user.is_moderator) || null;
+
+        if (config && config.pause_on_weekends) {
+            /* There was a bug in our tournament creation code that didn't
+             * stick this value in the time_control object, so this helps with
+             * display on those games. */
+            config.time_control.pause_on_weekends = config.pause_on_weekends;
+        }
+        let time_control_description = timeControlDescription(config.time_control);
+
+        let ranks = [];
+        for (let i = 0; i < 39; ++i) {
+            ranks.push({value: i + ".0", label: rankString({ranking: i, professional: false})});
+        }
+        for (let i = 37; i < 46; ++i) {
+            ranks.push({value: i + ".1", label: rankString({ranking: i, professional: true})});
+        }
+
+        const black_editable = editable && (config.black_player_id === 0 || !config.players?.black?.id);
+        const white_editable = editable && (config.white_player_id === 0 || !config.players?.white?.id);
 
         return (
           <div className="Modal GameInfoModal" ref="modal">
               <div className="header">
                   <div>
                       <h2>
-                          {game.config.game_name}
+                          {config.game_name}
                       </h2>
                       <h3>
-                          <Player disableCacheUpdate icon rank user={game.config.players.black} /> {
+                          <Player disableCacheUpdate icon rank user={this.props.black} /> {
                               _("vs.")
-                          } <Player disableCacheUpdate icon rank user={game.config.players.white} />
+                          } <Player disableCacheUpdate icon rank user={this.props.white} />
                       </h3>
                   </div>
               </div>
               <div className="body">
                 <dl className="horizontal">
-                    <dt>{_("Game")}</dt><dd>{game.config.game_name}</dd>
-                    <dt>{_("Black")}</dt><dd><Player disableCacheUpdate icon rank user={game.config.players.black} /></dd>
-                    <dt>{_("White")}</dt><dd><Player disableCacheUpdate icon rank user={game.config.players.white} /></dd>
+                    <dt>{_("Game")}</dt><dd>
+                          {editable
+                              ? <input value={config.game_name} onChange={this.updateName} />
+                              : <span>{config.game_name}</span>
+                          }
+                    </dd>
+                    {this.props.creatorId && <dt>{_("Creator")}</dt>}
+                    {this.props.creatorId && <dd><Player icon rank user={this.props.creatorId} /></dd>}
+                    <dt>{_("Black")}</dt><dd>
+                        { black_editable
+                            ? <span>
+                                <input value={config.players.black.name} onChange={this.updateBlackName} />
+                                <select value={config.players.black.rank + "." + (config.players.black.pro ? 1 : 0)} onChange={this.updateBlackRank} >
+                                    {ranks.map((rank, idx) =>
+                                        <option key={rank.value} value={rank.value}>{rank.label}</option>
+                                    )}
+                                </select>
+                              </span>
+                            : <Player disableCacheUpdate icon rank user={this.props.black} />
+                        }
+                    </dd>
+                    <dt>{_("White")}</dt><dd>
+                        { white_editable
+                            ? <span>
+                                <input value={config.players.white.name} onChange={this.updateWhiteName} />
+                                <select value={config.players.white.rank + "." + (config.players.white.pro ? 1 : 0)} onChange={this.updateWhiteRank} >
+                                    {ranks.map((rank, idx) =>
+                                        <option key={rank.value} value={rank.value}>{rank.label}</option>
+                                    )}
+                                </select>
+                              </span>
+                            : <Player disableCacheUpdate icon rank user={this.props.white} />
+                        }
+                    </dd>
                     <dt>{_("Time")}</dt>
                         <dd>
-                            {game.config.start_time ? moment(new Date(game.config.start_time * 1000)).format("LLL") : ""}
-                            {game.config.end_time ? " - " + moment(new Date(game.config.end_time * 1000)).format("LLL") : ""}
+                            {config.start_time ? moment(new Date(config.start_time * 1000)).format("LLL") : ""}
+                            {config.end_time ? " - " + moment(new Date(config.end_time * 1000)).format("LLL") : ""}
                         </dd>
-                    <dt>{_("Rules")}</dt><dd>{rulesText(game.config.rules)}</dd>
-                    <dt>{_("Ranked")}</dt><dd>{yesno(game.config.ranked)}</dd>
-                    <dt>{_("Annulled")}</dt><dd>{yesno(game.config.annulled)}</dd>
-                    <dt>{_("Board Size")}</dt><dd>{game.config.width}x{game.config.height}</dd>
-                    <dt>{_("Handicap")}</dt><dd>{handicapText(game.config.handicap)}</dd>
-                    <dt>{_("Komi")}</dt><dd>{parseFloat(game.config.komi).toFixed(1)}</dd>
-                    <dt>{_("Analysis")}</dt><dd>{(game.config.original_disable_analysis ? _("Analysis and conditional moves disabled") : _("Analysis and conditional moves enabled"))}</dd>
+                    <dt>{_("Rules")}</dt><dd>{rulesText(config.rules)}</dd>
+                    <dt>{_("Ranked")}</dt><dd>{yesno(config.ranked)}</dd>
+                    <dt>{_("Annulled")}</dt><dd>{yesno(this.props.annulled)}</dd>
+                    <dt>{_("Board Size")}</dt><dd>{config.width}x{config.height}</dd>
+                    <dt>{_("Handicap")}</dt><dd>{handicapText(config.handicap)}</dd>
+                    <dt>{_("Result")}</dt><dd>{
+                        (editable && config.review_id && !config.game_id)
+                            ? <input value={config.outcome} onChange={this.updateOutcome} />
+                            : <span>{config.outcome}</span>
+                        }</dd>
+                    <dt>{_("Komi")}</dt><dd>{parseFloat(config.komi).toFixed(1)}</dd>
+                    <dt>{_("Analysis")}</dt><dd>{(config.original_disable_analysis ? _("Analysis and conditional moves disabled") : _("Analysis and conditional moves enabled"))}</dd>
                     <dt>{_("Time Control")}</dt><dd>{time_control_description}</dd>
                 </dl>
               </div>
               <div className="buttons">
                   <button onClick={this.close}>{_("Close")}</button>
+                  {editable &&
+                      <span>
+                          {(this.props.config.review_id || null)
+                              &&
+                              <button className='danger' onClick={this.deleteReview}>{_("Delete")}</button>
+                          }
+                          <button onClick={this.save}>{_("Save")}</button>
+                      </span>
+                  }
               </div>
           </div>
         );
@@ -84,10 +265,10 @@ export class GameInfoModal extends Modal<GameInfoModalProperties, {}> {
 }
 
 
-export function openGameInfoModal(game): void {
-    openModal(<GameInfoModal game={game} fastDismiss />);
+export function openGameInfoModal(config:any, black: any, white:any, annulled:boolean, creator_id: number): void {
+    openModal(<GameInfoModal config={config} black={black} white={white} annulled={annulled} creatorId={creator_id} fastDismiss />);
 }
 
-function yesno(tf: boolean) {{{
+function yesno(tf: boolean) {
     return tf ? _("Yes") : _("No");
-}}}
+}

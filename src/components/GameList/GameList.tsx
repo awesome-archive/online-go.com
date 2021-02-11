@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2012-2017  Online-Go.com
+ * Copyright (C) 2012-2020  Online-Go.com
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU Affero General Public License as
@@ -16,21 +16,23 @@
  */
 
 import * as React from "react";
-import {OGSComponent} from "components";
-import {_, interpolate} from "translate";
-import preferences from "preferences";
-import {Goban} from "goban";
-import {termination_socket} from "sockets";
-import {makePlayerLink} from "Player";
-import {MiniGoban} from "MiniGoban";
-import {GobanLineSummary} from "GobanLineSummary";
-import data from "data";
+import { _, pgettext, interpolate } from "translate";
+import * as preferences from "preferences";
+import { Goban } from "goban";
+import { termination_socket } from "sockets";
+import { MiniGoban } from "MiniGoban";
+import { GobanLineSummary } from "GobanLineSummary";
+import { Player } from "Player";
+import * as data from "data";
 
 interface GameListProps {
     list: Array<any>;
     player?: any;
     emptyMessage?: string;
     disableSort?: boolean;
+    miniGobanProps?: any;
+    namesByGobans?: boolean;
+    forceList?: boolean;
 }
 
 export class GameList extends React.PureComponent<GameListProps, any> {
@@ -60,14 +62,18 @@ export class GameList extends React.PureComponent<GameListProps, any> {
                 case 'clock':
                     lst.sort((a, b) => {
                         try {
-                            if (a.json.clock.current_player === this.props.player.id && b.json.clock.current_player !== this.props.player.id) {
+                            let a_clock = a.goban && a.goban.last_clock ? a.goban.last_clock : a.json.clock;
+                            let b_clock = b.goban && b.goban.last_clock ? b.goban.last_clock : b.json.clock;
+
+                            /* not my move? push to bottom (or top) */
+                            if (a_clock.current_player === this.props.player.id && b_clock.current_player !== this.props.player.id) {
                                 return -1;
                             }
-                            if (b.json.clock.current_player === this.props.player.id && a.json.clock.current_player !== this.props.player.id) {
+                            if (b_clock.current_player === this.props.player.id && a_clock.current_player !== this.props.player.id) {
                                 return 1;
                             }
 
-                            return a.json.clock.expiration - b.json.clock.expiration || a.id - b.id;
+                            return a_clock.expiration - b_clock.expiration || a.id - b.id;
                         } catch (e) {
                             console.error(a, b, e);
                             return 0;
@@ -79,14 +85,18 @@ export class GameList extends React.PureComponent<GameListProps, any> {
                 case 'opponent-clock':
                     lst.sort((a, b) => {
                         try {
-                            if (a.json.clock.current_player === this.props.player.id && b.json.clock.current_player !== this.props.player.id) {
+                            let a_clock = a.goban && a.goban.last_clock ? a.goban.last_clock : a.json.clock;
+                            let b_clock = b.goban && b.goban.last_clock ? b.goban.last_clock : b.json.clock;
+
+                            /* not my move? push to bottom (or top) */
+                            if (a_clock.current_player === this.props.player.id && b_clock.current_player !== this.props.player.id) {
                                 return 1;
                             }
-                            if (b.json.clock.current_player === this.props.player.id && a.json.clock.current_player !== this.props.player.id) {
+                            if (b_clock.current_player === this.props.player.id && a_clock.current_player !== this.props.player.id) {
                                 return -1;
                             }
 
-                            return a.json.clock.expiration - b.json.clock.expiration || a.id - b.id;
+                            return a_clock.expiration - b_clock.expiration || a.id - b.id;
                         } catch (e) {
                             console.error(a, b, e);
                             return 0;
@@ -124,7 +134,27 @@ export class GameList extends React.PureComponent<GameListProps, any> {
                 case 'move-number' :
                     lst.sort((a, b) => {
                         try {
-                            return a.json.moves.length - b.json.moves.length || a.id - b.id;
+                            let a_move_num = a.goban ? a.goban.engine.getMoveNumber() : a.json.moves.length;
+                            let b_move_num = b.goban ? b.goban.engine.getMoveNumber() : b.json.moves.length;
+
+                            return a_move_num - b_move_num || a.id - b.id;
+                        } catch (e) {
+                            console.error(a, b, e);
+                            return 0;
+                        }
+                    });
+                    break;
+
+                case '-size' :
+                case 'size' :
+                    lst.sort((a, b) => {
+                        try {
+                            // sort by number of intersection
+                            // for non-square boards with the same number of intersections, the wider board is concidered larger
+                            let a_size = a.width * a.height * 100 + a.width;
+                            let b_size = b.width * b.height * 100 + b.width;
+
+                            return a_size - b_size || a.id - b.id;
                         } catch (e) {
                             console.error(a, b, e);
                             return 0;
@@ -141,7 +171,7 @@ export class GameList extends React.PureComponent<GameListProps, any> {
 
         if (lst.length === 0) {
             return <div className="container">{this.props.emptyMessage || ""}</div>;
-        } else if (lst.length > preferences.get("game-list-threshold")) {
+        } else if (this.props.forceList || lst.length > preferences.get("game-list-threshold")) {
             let sortable = this.props.disableSort && this.props.player ? '' : ' sortable ';
             let sort_order = this.state.sort_order;
             let move_number_sort      = sort_order === 'move-number'    ? 'sorted-desc' : sort_order === '-move-number'    ? 'sorted-asc' : '';
@@ -149,24 +179,27 @@ export class GameList extends React.PureComponent<GameListProps, any> {
             let opponent_sort         = sort_order === 'opponent'       ? 'sorted-desc' : sort_order === '-opponent'       ? 'sorted-asc' : '';
             let clock_sort            = sort_order === 'clock'          ? 'sorted-desc' : sort_order === '-clock'          ? 'sorted-asc' : '';
             let opponent_clock_sort   = sort_order === 'opponent-clock' ? 'sorted-desc' : sort_order === '-opponent-clock' ? 'sorted-asc' : '';
+            let size                  = sort_order === 'size'           ? 'sorted-desc' : sort_order === '-size'           ? 'sorted-asc' : '';
 
             return (
                 <div className="GameList GobanLineSummaryContainer">
                     {this.props.player
                         ? <div className="GobanLineSummaryContainerHeader">
-                              <div onClick={this.sortBy("move-number")} className={sortable + move_number_sort}>{_("Move")}</div>
+                              <div onClick={this.sortBy("move-number")} className={sortable + move_number_sort}>{pgettext("Game list move number", "Move")}</div>
                               <div onClick={this.sortBy("name")} className={sortable + game_sort + " text-align-left"}>{_("Game")}</div>
                               <div onClick={this.sortBy("opponent")} className={sortable + opponent_sort + " text-align-left"}>{_("Opponent")}</div>
                               <div onClick={this.sortBy("clock")} className={sortable + clock_sort}>{_("Clock")}</div>
                               <div onClick={this.sortBy("opponent-clock")} className={sortable + opponent_clock_sort}>{_("Opponent's Clock")}</div>
+                              <div onClick={this.sortBy("size")} className={sortable + size}>{_("Size")}</div>
                           </div>
                         : <div className="GobanLineSummaryContainerHeader">
-                              <div >{_("Move")}</div>
+                              <div >{pgettext("Game list move number", "Move")}</div>
                               <div >{_("Game")}</div>
                               <div className="text-align-left">{_("Black")}</div>
                               <div></div>
                               <div className="text-align-left">{_("White")}</div>
                               <div></div>
+                              <div className="text-align-left">{_("Size")}</div>
                           </div>
                     }
                     {lst.map((game) =>
@@ -175,22 +208,49 @@ export class GameList extends React.PureComponent<GameListProps, any> {
                             black={game.black}
                             white={game.white}
                             player={this.props.player}
-                            />)}
-                </div>
-            );
-        } else {
-            return (
-                <div className="GameList">
-                    {lst.map((game) =>
-                        <MiniGoban key={game.id}
-                            id={game.id}
-                            black={game.black}
-                            white={game.white}
+                            gobanref={(goban) => game.goban = goban}
                             width={game.width}
                             height={game.height}
                             />)}
                 </div>
             );
+        } else {
+            if (this.props.namesByGobans) {
+                return (
+                    <div className="GameList">
+                        {lst.map((game) =>
+                            <div className='goban-with-names' key={game.id}>
+                                <div className='names'>
+                                    <div><Player user={game.black} disableCacheUpdate noextracontrols /></div>
+                                    <div><Player user={game.white} disableCacheUpdate noextracontrols /></div>
+                                </div>
+                                <MiniGoban
+                                    id={game.id}
+                                    black={game.black}
+                                    white={game.white}
+                                    width={game.width}
+                                    height={game.height}
+                                    {...(this.props.miniGobanProps || {})}
+                                    />
+                            </div>
+                        )}
+                    </div>
+                );
+            } else {
+                return (
+                    <div className="GameList">
+                        {lst.map((game) =>
+                            <MiniGoban key={game.id}
+                                id={game.id}
+                                black={game.black}
+                                white={game.white}
+                                width={game.width}
+                                height={game.height}
+                                {...(this.props.miniGobanProps || {})}
+                                />)}
+                    </div>
+                );
+            }
         }
     }
 }

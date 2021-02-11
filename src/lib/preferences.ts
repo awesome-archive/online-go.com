@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2012-2017  Online-Go.com
+ * Copyright (C) 2012-2020  Online-Go.com
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU Affero General Public License as
@@ -15,73 +15,125 @@
  * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
 
-import data from "data";
-import {Listener} from "data";
+import * as data from "data";
 import {GoThemes} from "goban";
+import {current_language} from "translate";
 
 let defaults = {
-    "one-click-submit-live": true,
-    "double-click-submit-live": false,
-    "one-click-submit-correspondence": false,
-    "double-click-submit-correspondence": false,
-    "label-positioning": "all",
-    "game-list-threshold": 10,
-    "show-move-numbers": true,
-    "show-variation-move-numbers": false,
+    "ai-review-enabled": true,
+    "ai-review-use-score": false,
+    "always-disable-analysis": false,
+    "asked-to-enable-desktop-notifications": false,
     "auto-advance-after-submit": true,
-    "notification-timeout": 10,
     "autoplay-delay": 10000,
-
-    "sound-enabled": true,
-    "sound-volume": 0.5,
-    "sound-voice-countdown": true,
-
-
-    "goban-theme-board": null,
-    "goban-theme-black": null,
-    "goban-theme-white": null,
-
-    "language": "auto",
-    "profanity-filter": {"en": true, "locale": true},
-    "chat.user-sort-order": "rank",
+    "board-labeling": 'automatic',
     "chat.show-all-global-channels": true,
     "chat.show-all-group-channels": true,
     "chat.show-all-tournament-channels": true,
-
+    "chat.user-sort-order": "rank",
+    "desktop-notifications": true,
+    "dock-delay": 0, // seconds.
+    "double-click-submit-correspondence": false,
+    "double-click-submit-live": false,
+    "variation-stone-transparency": 0.6,
+    "visual-undo-request-indicator": true,
+    "dynamic-title": true,
+    "function-keys-enabled": false,
+    "game-list-threshold": 10,
+    "goban-theme-black": null,
+    "goban-theme-board": null,
+    "goban-theme-white": null,
+    "label-positioning": "all",
+    "language": "auto",
+    "move-tree-numbering": "move-number",
+    "new-game-board-size": 19,
+    "notification-timeout": 10,
+    "notify-on-incident-report": true,
     "observed-games-page-size": 9,
     "observed-games-viewing": "live",
-
-    "new-game-board-size": 19,
-
-    "tournaments-tab": "correspondence",
-    "move-tree-numbering": "move-number",
-
+    "observed-games-filter": {},
+    "observed-games-force-list": false,
+    "one-click-submit-correspondence": false,
+    "one-click-submit-live": true,
+    "profanity-filter": {"en": true},
     "puzzle.randomize.color": true,
     "puzzle.randomize.transform": true,
     "puzzle.zoom": true,
+    "show-all-challenges": false,
+    "show-unranked-challenges": true,
+    "show-ranked-challenges": true,
+    "show-19x19-challenges": true,
+    "show-13x13-challenges": true,
+    "show-9x9-challenges": true,
+    "show-other-boardsize-challenges": true,
+    "show-move-numbers": true,
+    "show-offline-friends": true,
+    "hide-ranks": false,
+    "show-ratings-in-rating-grid": false,
+    "show-tournament-indicator": true,
+    "show-variation-move-numbers": false,
+
+    "sound-enabled": true,
+    "sound-voice-countdown-main" : false,
+    "sound-voice-countdown": true,
+    "sound-volume": 0.5,
+
+    "sound.volume.master": 1.0,
+
+    "sound.countdown.tick-tock.start": 0,
+    "sound.countdown.ten-seconds.start": 10,
+    "sound.countdown.five-seconds.start": 10,
+    "sound.countdown.every-second.start": 10,
+    "sound.countdown.byoyomi-direction": "auto",
+    "sound.vibrate-on-stone-placement": true,
+    "sound.positional-stone-placement-effect": true,
+
+    "supporter.currency": "auto",
+    "supporter.interval": "month",
+    "tournaments-tab": "correspondence",
+    "translation-dialog-dismissed": 0,
+    "translation-dialog-never-show": false,
+    "unicode-filter": false,
+    "variations-in-chat-enabled": true,
+
+    "show-empty-chat-notification": true,
+    "chat-subscribe-group-chat-unread": true,
+    "chat-subscribe-group-mentions": true,
+    "chat-subscribe-tournament-chat-unread": true,
+    "chat-subscribe-tournament-mentions": true,
+
 };
+
+defaults['profanity-filter'][current_language] = true;
+
 
 for (let k in defaults) {
     data.setDefault(`preferences.${k}`, defaults[k]);
 }
 
+export type ValidPreference = keyof typeof defaults;
 
-
-export function get(key: string): any {
-    return data.ensureDefaultAndGet(`preferences.${key}`);
+export function get(key: ValidPreference): any {
+    if (!(key in defaults)) {
+        throw new Error(`Undefined default: ${key}`);
+    }
+    return data.get(`preferences.${key}`);
 }
 export function set(key: string, value: any): any {
     return data.set(`preferences.${key}`, value);
 }
-export function watch(key: string, cb: (d: any, key?: string) => void, call_on_undefined?: boolean): Listener {
-    return data.watch(`preferences.${key}`, cb, call_on_undefined);
+export function watch(key: string, cb: (d: any) => void, call_on_undefined?: boolean, dont_call_immediately?: boolean): void {
+    data.watch(`preferences.${key}`, cb, call_on_undefined, dont_call_immediately);
+}
+export function unwatch(key: string, cb: (d: any) => void): void {
+    data.unwatch(`preferences.${key}`, cb);
 }
 
 export function dump(): void {
     data.dump("preferences.", true);
 }
 
-export function getSelectedThemes() {
+export function getSelectedThemes():{"board": string, "black": string, "white": string} {
     //let default_plain = $.browser.mobile || ($(window).width() * (window.devicePixelRatio || 1)) <= 768;
     let default_plain = ($(window).width() * (window.devicePixelRatio || 1)) <= 768;
 
@@ -109,23 +161,15 @@ export function watchSelectedThemes(cb) {
         cb(getSelectedThemes());
     };
 
-    let a = watch("goban-theme-board", call_cb);
-    let b = watch("goban-theme-black", call_cb);
+    watch("goban-theme-board", call_cb);
+    watch("goban-theme-black", call_cb);
     dont_call_right_away = false;
-    let c = watch("goban-theme-white", call_cb);
+    watch("goban-theme-white", call_cb);
     return {
         remove: () => {
-            a.remove();
-            b.remove();
-            c.remove();
+            unwatch("goban-theme-board", call_cb);
+            unwatch("goban-theme-black", call_cb);
+            unwatch("goban-theme-white", call_cb);
         }
     };
 }
-
-
-export default window["preferences"] = {
-    get: get,
-    set: set,
-    watch: watch,
-    dump: dump,
-};

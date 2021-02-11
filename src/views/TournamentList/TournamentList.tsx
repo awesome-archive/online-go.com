@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2012-2017  Online-Go.com
+ * Copyright (C) 2012-2020  Online-Go.com
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU Affero General Public License as
@@ -16,14 +16,15 @@
  */
 
 import * as React from "react";
-import {Link, browserHistory} from "react-router";
+import {Link} from "react-router-dom";
+import {browserHistory} from "ogsHistory";
 import {_, pgettext, interpolate} from "translate";
 import {post, get} from "requests";
-import {Card} from "components";
-import {AdUnit} from "AdUnit";
-import preferences from "preferences";
+import {Card} from "material";
+import * as preferences from "preferences";
 import {errorAlerter} from "misc";
-import {shortTimeControl, shortShortTimeControl, computeAverageMoveTime} from "TimeControl";
+import {shortTimeControl, shortShortTimeControl} from "TimeControl";
+import {computeAverageMoveTime} from 'goban';
 import {PaginatedTable} from "PaginatedTable";
 import * as moment from "moment";
 import {TOURNAMENT_TYPE_NAMES, TOURNAMENT_PAIRING_METHODS, rankRestrictionText, shortRankRestrictionText} from "Tournament";
@@ -35,12 +36,16 @@ interface TournamentListProperties {
     filter: any;
 }
 
-export class TournamentListMainView extends React.PureComponent<TournamentListProperties, any> { /* {{{ */
+export class TournamentListMainView extends React.PureComponent<TournamentListProperties, any> {
     constructor(props) {
         super(props);
         this.state = {
             tab: preferences.get("tournaments-tab")
         };
+    }
+
+    componentDidMount() {
+        window.document.title = _("Tournaments");
     }
 
     setTabArchive = () => this.setTab("archive");
@@ -57,12 +62,11 @@ export class TournamentListMainView extends React.PureComponent<TournamentListPr
         let tab = this.state.tab;
 
         return (
-            <div className="TournamentList container">
-                <AdUnit unit="cdm-zone-01" nag/>
 
-                <Card>
+            <div className="page-width">
+                <div className="TournamentList container">
                     <div className="tabhead">
-                        <h2>{_("Tournaments")}</h2>
+                        <h2><i className="fa fa-trophy"></i> {_("Tournaments")}</h2>
                         <div>
                             <span className={"tab" + (tab === "schedule" ? " active" : "")} onClick={this.setTabSchedule}>
                                 <i className="fa fa-calendar"></i>
@@ -130,13 +134,13 @@ export class TournamentListMainView extends React.PureComponent<TournamentListPr
                             }}/>
                         </div>
                     )}
-                </Card>
+                </div>
             </div>
         );
     }
-} /* }}} */
+}
 
-class Schedule extends React.PureComponent<{}, any> { /* {{{ */
+class Schedule extends React.PureComponent<{}, any> {
     constructor(props) {
         super(props);
         this.state = {
@@ -158,7 +162,7 @@ class Schedule extends React.PureComponent<{}, any> { /* {{{ */
     render() {
         return (
             <div className="TournamentList-Schedule">
-            
+
                 <table className="schedule-table">
                     <thead>
                         <tr>
@@ -198,8 +202,8 @@ class Schedule extends React.PureComponent<{}, any> { /* {{{ */
             </div>
         );
     }
-} /* }}} */
-export class TournamentList extends React.PureComponent<TournamentListProperties, any> { /* {{{ */
+}
+export class TournamentList extends React.PureComponent<TournamentListProperties, any> {
     refs: {
         table
     };
@@ -248,25 +252,25 @@ export class TournamentList extends React.PureComponent<TournamentListProperties
                          )
                         },
 
-                        {header: _("When")        , className: "nobr center" , render: (tournament) => when(tournament.time_start)},
-                        {header: _("Time Control"), className: "nobr center" , render: (tournament) => shortShortTimeControl(tournament.time_control_parameters)},
-                        {header: _("Size")        , className: "nobr center" , render: (tournament) => (`${tournament.board_size}x${tournament.board_size}`)},
-                        {header: _("Players")     , className: "nobr center" , render: (tournament) => tournament.player_count},
-                        {header: _("Ranks")       , className: "nobr center" , render: (tournament) => shortRankRestrictionText(tournament.min_ranking, tournament.max_ranking)},
+                        {header: _("When")        , className: "nobr" , render: (tournament) => when(tournament.time_start)},
+                        {header: _("Time Control"), className: "nobr" , render: (tournament) => shortShortTimeControl(tournament.time_control_parameters)},
+                        {header: _("Size")        , className: "nobr" , render: (tournament) => (`${tournament.board_size}x${tournament.board_size}`)},
+                        {header: _("Players")     , className: "nobr" , render: (tournament) => tournament.player_count},
+                        {header: _("Ranks")       , className: "nobr" , render: (tournament) => shortRankRestrictionText(tournament.min_ranking, tournament.max_ranking)},
                     ]}
                 />
 
 
-                
+
             </div>
         );
     }
-} /* }}} */
+}
 
-function mk32icon(path) {{{
+function mk32icon(path) {
     return path.replace(/-[0-9]+.png/, "-32.png");
-}}}
-function speedIcon(e) {{{
+}
+function speedIcon(e) {
     let tpm = computeAverageMoveTime(e.time_control_parameters);
     if (tpm === 0 || tpm > 3600) {
         return "ogs-turtle";
@@ -275,8 +279,8 @@ function speedIcon(e) {{{
         return "fa fa-bolt";
     }
     return "fa fa-clock-o";
-}}}
-function timeIcon(time_per_move) {{{
+}
+function timeIcon(time_per_move) {
     if (time_per_move === 0) {
     }
     else if (time_per_move < 20) {
@@ -286,9 +290,9 @@ function timeIcon(time_per_move) {{{
         return "fa fa-clock-o";
     }
     return "ogs-turtle";
-}}}
+}
 
-function rrule_description(entry) {{{
+function rrule_description(entry) {
     let m = moment(new Date(entry.next_run)).add(entry.lead_time_seconds, "seconds");
 
     let rrule = entry.rrule;
@@ -327,32 +331,32 @@ function rrule_description(entry) {{{
         }
     }
     console.log("Failed: ", unit, interval);
-}}}
-function typeDescription(e) {{{
+}
+function typeDescription(e) {
     return TOURNAMENT_TYPE_NAMES[e.tournament_type];
-}}}
-function datefmt(d, offset?) {{{
+}
+function datefmt(d, offset?) {
     if (!offset) {
         offset = 0;
     }
     return moment(new Date(d)).add(offset, "seconds").format("llll");
-}}}
-function timeControlDescription(e) {{{
+}
+function timeControlDescription(e) {
     return shortTimeControl(e.time_control_parameters);
-}}}
-function calendar(d, offset?) {{{
+}
+function calendar(d, offset?) {
     if (!offset) {
         offset = 0;
     }
     return moment(new Date(d)).add(offset, "seconds").calendar();
-}}}
-function fromNow(d, offset?) {{{
+}
+function fromNow(d, offset?) {
     if (!offset) {
         offset = 0;
     }
     return moment(new Date(d)).add(offset, "seconds").fromNow();
-}}}
-function when(t) {{{
+}
+function when(t) {
     if (t) {
         let d = new Date(t);
         let diff = Math.round((d.getTime() - Date.now()) / 1000.0);
@@ -366,4 +370,4 @@ function when(t) {{{
     } else {
         return "";
     }
-}}}
+}

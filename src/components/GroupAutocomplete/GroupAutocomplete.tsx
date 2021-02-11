@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2012-2017  Online-Go.com
+ * Copyright (C) 2012-2020  Online-Go.com
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU Affero General Public License as
@@ -18,9 +18,7 @@
 import * as React from "react";
 import {_, pgettext, interpolate} from "translate";
 import {post, get, abort_requests_in_flight} from "requests";
-
-import _Autosuggest = require("react-autosuggest");
-let Autosuggest = _Autosuggest as any;
+import * as Autosuggest from 'react-autosuggest';
 
 interface GroupAutocompleteProperties {
     onComplete: (user) => void;
@@ -52,7 +50,7 @@ export class GroupAutocomplete extends React.PureComponent<GroupAutocompleteProp
     clear() {
         this.setState({value: ""});
     }
-    complete(groupname) {{{
+    complete(groupname) {
         if (groupname in groups_by_name) {
             if (this.last_on_complete_username !== groupname) {
                 this.props.onComplete(groups_by_name[groupname]);
@@ -62,14 +60,14 @@ export class GroupAutocomplete extends React.PureComponent<GroupAutocompleteProp
             this.props.onComplete(null);
             this.last_on_complete_username = null;
         }
-    }}}
-    onChange = (event, { newValue }) => {{{
+    }
+    onChange = (event, { newValue }) => {
         this.setState({
             value: newValue
         });
         this.complete(newValue);
-    }}}
-    onSuggestionsFetchRequested = ({ value }) => {{{
+    }
+    onSuggestionsFetchRequested = ({ value }) => {
         if (this.current_search === value) {
             return;
         }
@@ -100,27 +98,28 @@ export class GroupAutocomplete extends React.PureComponent<GroupAutocompleteProp
                 suggestions: []
             });
         }
-    }}}
-    onSuggestionsClearRequested = () => {{{
+    }
+    onSuggestionsClearRequested = () => {
         this.setState({
             suggestions: []
         });
-    }}}
-    onBlur = (ev, {focusedSuggestion}) => {{{
+    }
+    //onBlur = (ev, {focusedSuggestion}) => {
+    onBlur = (ev, {highlightedSuggestion}) => {
         if (this.tabbed_out) {
-            if (focusedSuggestion) {
-                this.setState({value: getSuggestionValue(focusedSuggestion)});
-                this.complete(getSuggestionValue(focusedSuggestion));
+            if (highlightedSuggestion) {
+                this.setState({value: getSuggestionValue(highlightedSuggestion)});
+                this.complete(getSuggestionValue(highlightedSuggestion));
             }
         }
-    }}}
-    onKeyDown = (ev) => {{{
+    }
+    onKeyDown = (ev) => {
         if (ev.keyCode === 9) {
             this.tabbed_out = true;
         } else {
             this.tabbed_out = false;
         }
-    }}}
+    }
 
     render() {
         let { suggestions, value } = this.state;
@@ -141,7 +140,7 @@ export class GroupAutocomplete extends React.PureComponent<GroupAutocompleteProp
                     onSuggestionsClearRequested={this.onSuggestionsClearRequested}
                     getSuggestionValue={getSuggestionValue}
                     renderSuggestion={renderSuggestion}
-                    focusFirstSuggestion={true}
+                    highlightFirstSuggestion={true}
                     inputProps={inputProps}
                     />
             </span>

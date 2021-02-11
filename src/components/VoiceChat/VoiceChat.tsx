@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2012-2017  Online-Go.com
+ * Copyright (C) 2012-2020  Online-Go.com
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU Affero General Public License as
@@ -102,7 +102,7 @@ export class VoiceChat extends React.PureComponent<VoiceChatProperties, any> {
         this.join(this.state.channel);
         comm_socket.on("connect", this.join);
     }
-    componentWillReceiveProps(new_props) {
+    UNSAFE_componentWillReceiveProps(new_props) {
         if (this.state.channel !== new_props.channel) {
             this.part(this.state.channel);
             this.join(new_props.channel);
@@ -201,7 +201,7 @@ export class VoiceChat extends React.PureComponent<VoiceChatProperties, any> {
     }
 
     autoplay_timeout = null;
-    handleAudio = (obj) => {{{
+    handleAudio = (obj) => {
         let channel = obj.channel;
         if (channel !== this.state.channel) {
             return;
@@ -225,9 +225,9 @@ export class VoiceChat extends React.PureComponent<VoiceChatProperties, any> {
                 }, 100);
             }
         }
-    }}}
+    }
 
-    beginBroadcasting() {{{
+    beginBroadcasting() {
         this.setState({broadcasting: true});
 
         if (this.recorder == null) {
@@ -266,9 +266,9 @@ export class VoiceChat extends React.PureComponent<VoiceChatProperties, any> {
         /* workaround for https://github.com/Microsoft/TypeScript/issues/10242 */
         (this.recorder as any).catch(errorLogger);
 
-    }}}
+    }
 
-    endBroadcasting() {{{
+    endBroadcasting() {
         this.setState({broadcasting: false});
         if (this.recorder) {
             this.recorder = null;
@@ -288,23 +288,23 @@ export class VoiceChat extends React.PureComponent<VoiceChatProperties, any> {
             this.recorder = null;
         }
         */
-    }}}
+    }
 
-    toggleBroadcasting = () => {{{
+    toggleBroadcasting = () => {
         if (this.state.broadcasting) {
             this.endBroadcasting();
         } else {
             this.beginBroadcasting();
         }
-    }}}
+    }
 
-    togglePlay = (event) => {{{
+    togglePlay = (event) => {
         if (this.playing()) {
             this.stop(event);
         } else {
             this.play();
         }
-    }}}
+    }
 
 
     render() {

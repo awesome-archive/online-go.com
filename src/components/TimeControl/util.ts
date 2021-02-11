@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2012-2017  Online-Go.com
+ * Copyright (C) 2012-2020  Online-Go.com
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU Affero General Public License as
@@ -15,17 +15,17 @@
  * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
 
-import data from "data";
-import {_, pgettext, interpolate} from "translate";
+import { computeAverageMoveTime } from 'goban';
+import {_, pgettext, ngettext, npgettext, interpolate} from "translate";
 import {TimeControl, TimeControlTypes} from "./TimeControl";
 
-const times = [ /* {{{ */
+const times = [
     1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 12,
     15, 20, 25, 30, 35, 40, 45, 50, 55, 60,
     70, 80, 90,
     105, 120,
     150, 180, 210, 240, 270, 300,
-    360, 420, 480, 540, 600,
+    360, 420, 480, 540, 600, 720,
     900, 1200, 1500, 1800, 2100, 2400, 2700, 3000, 3300, 3600,
     4200, 4800, 5400, 6000, 6600, 7200,
     8100, 9000, 9900, 10800,
@@ -50,9 +50,9 @@ const times = [ /* {{{ */
     86400 * 14,
     86400 * 21,
     86400 * 28,
-]; /* }}} */
+];
 
-function mktime(t) {{{
+function mktime(t) {
     if (t < 60) {
         return interpolate(t === 1 ? _("1 second") : _("%s seconds"), [t]);
     }
@@ -76,14 +76,14 @@ function mktime(t) {{{
 
     return interpolate(t1 === 1 ? _("1 day") : _("%s days"), [t1]) +
             (t2 ?  (" " + interpolate(_("%s hours"), [t2])) : "");
-}}}
+}
 
-const zero = { /* {{{ */
+const zero = {
     "time": 0,
     "label": _("None"),
-}; /* }}} */
+};
 
-function gen(min, max) {{{
+function gen(min, max) {
     let ret = [];
     for (let i = 0; i < times.length; ++i) {
         if (times[i] >= min && times[i] <= max) {
@@ -94,9 +94,9 @@ function gen(min, max) {{{
         }
     }
     return ret;
-}}}
+}
 
-export const time_options = { /* {{{ */
+export const time_options = {
     "blitz": {
         "fischer": {
             "initial_time": gen(5, 300),
@@ -160,10 +160,10 @@ export const time_options = { /* {{{ */
             "total_time": gen(86400 * 7, 86400 * 28),
         },
     },
-}; /* }}} */
+};
 
 
-export function makeTimeControlParameters(tc: any): TimeControl {{{
+export function makeTimeControlParameters(tc: any): TimeControl {
     let tpm = computeAverageMoveTime(tc);
     let speed: TimeControlTypes.TimeControlSpeed = tpm === 0 || tpm > 3600 ? "correspondence" : (tpm < 10 ? "blitz" : "live");
 
@@ -217,8 +217,8 @@ export function makeTimeControlParameters(tc: any): TimeControl {{{
             };
     }
     throw new Error(`Invalid time control type: ${tc.system}`);
-}}}
-export function timeControlText(time_control) { /* {{{ */
+}
+export function timeControlText(time_control) {
     if (typeof(time_control) === "object") {
         time_control = time_control.system || time_control.time_control;
     }
@@ -232,87 +232,39 @@ export function timeControlText(time_control) { /* {{{ */
         case "absolute": return _("absolute");
     }
     return "[unknown]";
-} /* }}} */
-function old_computeTimeControl(system, time_per_move) { /* This is old but STILL NEEDED (for archived games) {{{ */
-    switch (system) {
-        case "simple":
-            return {"initial": 0, "per_move": time_per_move, "moves": 0, "max": 0};
-        case "fischer":
-            return {"initial": time_per_move * 3, "per_move": time_per_move, "moves": 0, "max": Math.min(3600 * 24 * 21, time_per_move * 6)};
-        case "canadian":
-            return {"initial": Math.min(3600 * 24 * 21, time_per_move * 120), "per_move": time_per_move, "moves": 20, "max": 0};
-        case "absolute":
-            return {"initial": time_per_move * 180, "per_move": time_per_move, "moves": 0, "max": 0};
-        case "none":
-            return {"initial": 0, "per_move": 0, "moves": 0, "max": 0};
-    }
-} /* }}} */
-function old_getTimeControlText(time_control_system, time_per_move) { /* This is old but STILL NEEDED (for archived games) {{{ */
-    let time_control_text = "";
-    let time = old_computeTimeControl(time_control_system, time_per_move);
-    switch (time_control_system) {
-        case "simple":
-            time_control_text = interpolate(_("%s per move"), [durationString(time.per_move)]);
-            break;
-        case "fischer":
-            time_control_text = interpolate(_("%s starting time<br/>plus %s per move<br/> up to a maximum of %s"), [
-                                    durationString(time.initial),
-                                    durationString(time.per_move),
-                                    durationString(time.max)]);
-            break;
-        case "canadian":
-            time_control_text = interpolate(_("%s thinking time<br/>%s per %s moves after that"),
-                                    [durationString(time.initial), durationString(Math.min(86400 * 21, time.per_move * time.moves)), time.moves]);
-            break;
-        case "absolute":
-            time_control_text = interpolate(_("%s total play time per player"), [durationString(time.initial)]);
-            break;
-        case "none":
-            $("#time_per_move").attr("disabled", "disabled");
-            time_control_text = _("No time limits.");
-            break;
+}
 
-    }
-    return time_control_text;
-} /* }}} */
-export function getTimeControlText(time_control_system, time_per_move) { /* {{{ */
-    return timeControlDescription(time_control_system, time_per_move);
-} /* }}} */
-export function timeControlDescription(time_control, old_time_per_move?) { /* {{{ */
-    if (old_time_per_move) {
-        return old_getTimeControlText(time_control, old_time_per_move);
-    }
-
+export function timeControlDescription(time_control) {
     let ret = "";
 
     switch (time_control && (time_control.system || time_control.time_control)) {
         case "simple":
-            ret = interpolate(_("Simple: %s per move."), [durationString(time_control.per_move).toLowerCase()]);
+            ret = interpolate(_("Simple: %s per move."), [durationString(time_control.per_move)]);
             break;
         case "fischer":
             ret = interpolate(_("Fischer: Clock starts with %s and increments by %s per move up to a maximum of %s."), [
-                                    durationString(time_control.initial_time).toLowerCase(),
-                                    durationString(time_control.time_increment).toLowerCase(),
-                                    durationString(time_control.max_time).toLowerCase()
+                                    durationString(time_control.initial_time),
+                                    durationString(time_control.time_increment),
+                                    durationString(time_control.max_time)
                                 ]);
             break;
         case "byoyomi":
             ret = interpolate(_("Japanese Byo-Yomi: Clock starts with %s main time, followed by %s %s periods."), [
-                                    durationString(time_control.main_time).toLowerCase(),
+                                    durationString(time_control.main_time),
                                     time_control.periods,
-                                    durationString(time_control.period_time).toLowerCase()
+                                    durationString(time_control.period_time)
                                 ]);
 
             break;
         case "canadian":
             ret = interpolate(_("Canadian Byo-Yomi: Clock starts with %s main time, followed by %s per %s stones."), [
-                                    durationString(time_control.main_time).toLowerCase(),
-                                    durationString(time_control.period_time).toLowerCase(),
+                                    durationString(time_control.main_time),
+                                    durationString(time_control.period_time),
                                     time_control.stones_per_period
                                 ]);
             break;
         case "absolute":
-            ret = interpolate(_("Absolute: %s total play time per player."), [durationString(time_control.total_time).toLowerCase()]);
+            ret = interpolate(_("Absolute: %s total play time per player."), [durationString(time_control.total_time)]);
             break;
         case "none":
             ret = _("No time limits.");
@@ -327,78 +279,128 @@ export function timeControlDescription(time_control, old_time_per_move?) { /* {{
     }
 
     return ret;
-}  /* }}} */
-export function shortTimeControl(time_control) { /* {{{ */
+}
+export function shortTimeControl(time_control) {
     if (typeof(time_control) !== "object") {
         return "~" + durationString(time_control);
     }
 
+    if (time_control === null) {
+        return '';
+    }
 
     switch (time_control.system || time_control.time_control) {
         case "simple":
-            return interpolate(pgettext("Simple time: <time>/move", "%s/move"), [durationString(time_control.per_move).toLowerCase()]);
+            return interpolate(pgettext("Simple time: <time>/move", "%s/move"), [durationString(time_control.per_move)]);
         case "fischer":
             return interpolate(pgettext("Fischer time", "%s+%s/move, max %s"), [
-                                    durationString(time_control.initial_time).toLowerCase(),
-                                    durationString(time_control.time_increment).toLowerCase(),
-                                    durationString(time_control.max_time).toLowerCase()
+                                    durationString(time_control.initial_time),
+                                    durationString(time_control.time_increment),
+                                    durationString(time_control.max_time)
                                 ]);
         case "byoyomi":
             return interpolate(pgettext("Japanese Byo-Yomi", "%s+%sx%s"), [
-                                    durationString(time_control.main_time).toLowerCase(),
+                                    durationString(time_control.main_time),
                                     time_control.periods,
-                                    durationString(time_control.period_time).toLowerCase().trim()
+                                    durationString(time_control.period_time)
                                 ]);
 
         case "canadian":
             return interpolate(pgettext("Canadian Byo-Yomi", "%s+%s/%s"), [
-                                    durationString(time_control.main_time).toLowerCase(),
-                                    durationString(time_control.period_time).toLowerCase(),
+                                    durationString(time_control.main_time),
+                                    durationString(time_control.period_time),
                                     time_control.stones_per_period
                                 ]);
         case "absolute":
-            return durationString(time_control.total_time).toLowerCase();
+            return durationString(time_control.total_time);
         case "none":
             return _("None");
         default:
             return "[error: " + (time_control.system || time_control.time_control) + "]";
     }
-}  /* }}} */
-export function shortShortTimeControl(time_control) { /* {{{ */
+}
+export function shortShortTimeControl(time_control) {
     if (typeof(time_control) !== "object") {
         return "~" + shortDurationString(time_control);
     }
 
+    if (time_control === null) {
+        return '';
+    }
+
     switch (time_control.system || time_control.time_control) {
         case "simple":
-            return interpolate(pgettext("Simple time: <time>/move", "%s/move"), [shortDurationString(time_control.per_move).toLowerCase()]);
+            return interpolate(pgettext("Simple time: <time>/move", "%s/move"), [shortDurationString(time_control.per_move)]);
         case "fischer":
             return interpolate(pgettext("Fischer time", "%s+%s up to %s"), [
-                                    shortDurationString(time_control.initial_time).toLowerCase(),
-                                    shortDurationString(time_control.time_increment).toLowerCase(),
-                                    shortDurationString(time_control.max_time).toLowerCase()
+                                    shortDurationString(time_control.initial_time),
+                                    shortDurationString(time_control.time_increment),
+                                    shortDurationString(time_control.max_time)
                                 ]);
         case "byoyomi":
             return interpolate(pgettext("Japanese Byo-Yomi", "%s+%sx%s"), [
-                                    shortDurationString(time_control.main_time).toLowerCase(),
+                                    shortDurationString(time_control.main_time),
                                     time_control.periods,
-                                    shortDurationString(time_control.period_time).toLowerCase().trim()
+                                    shortDurationString(time_control.period_time)
                                 ]);
         case "canadian":
             return interpolate(pgettext("Canadian Byo-Yomi", "%s+%s/%s"), [
-                                    shortDurationString(time_control.main_time).toLowerCase(),
-                                    shortDurationString(time_control.period_time).toLowerCase(),
+                                    shortDurationString(time_control.main_time),
+                                    shortDurationString(time_control.period_time),
                                     time_control.stones_per_period
                                 ]);
         case "absolute":
-            return shortDurationString(time_control.total_time).toLowerCase();
+            return shortDurationString(time_control.total_time);
         case "none":
             return _("None");
         default:
             return "[error: " + (time_control.system || time_control.time_control) + "]";
     }
-}  /* }}} */
-export function timeControlSystemText(system) { /* {{{ */
+}
+
+const QUESTIONABLE_SECONDS_PER_MOVE = 4;  // less than this gets flagged as may be cheaty.
+const QUESTIONABLE_ABSOLUTE_TIME = 900; // Arguably absolute time cheaters don't use > 10 min.  I've seen reports complaining about abuse at 10min though, so set this a bit higher.
+
+export function usedForCheating(time_control) {
+    if (typeof(time_control) !== "object" || time_control === null) {
+        return false;
+    }
+
+    // either there has to be enough time for the whole game or
+    // a sensible ongoing per-move allocation
+    switch (time_control.system || time_control.time_control) {
+
+        case "simple":
+            return time_control.per_move < QUESTIONABLE_SECONDS_PER_MOVE;
+
+        case "absolute":
+            return time_control.total_time <= QUESTIONABLE_ABSOLUTE_TIME;
+
+        case "canadian":
+            return !(
+                time_control.main_time > QUESTIONABLE_ABSOLUTE_TIME ||
+                time_control.period_time / time_control.stones_per_period > QUESTIONABLE_SECONDS_PER_MOVE
+            );
+
+        case "byoyomi":
+            return !(
+                time_control.main_time > QUESTIONABLE_ABSOLUTE_TIME ||
+                time_control.period_time > QUESTIONABLE_SECONDS_PER_MOVE
+                );
+
+        case "fischer":
+            return !(
+                time_control.initial_time > QUESTIONABLE_ABSOLUTE_TIME ||
+                time_control.time_increment > QUESTIONABLE_SECONDS_PER_MOVE
+            );
+
+        case "none":
+        default:
+            return false;
+    }
+}
+
+export function timeControlSystemText(system) {
     switch (system) {
         case "simple"   : return pgettext("time control system", "simple");
         case "fischer"  : return pgettext("time control system", "fischer");
@@ -408,8 +410,8 @@ export function timeControlSystemText(system) { /* {{{ */
         case "none"     : return pgettext("time control system", "none");
         default    : return "[error]";
     }
-} /* }}} */
-export function validateTimeControl(tc: TimeControl): boolean {{{
+}
+export function validateTimeControl(tc: TimeControl): boolean {
    let error = false;
 
     for (let k in tc) {
@@ -444,122 +446,69 @@ export function validateTimeControl(tc: TimeControl): boolean {{{
         case "none":
             return !error;
     }
-}}}
-export function computeAverageMoveTime(time_control, old_time_per_move?) { /* {{{ */
-    if (old_time_per_move) {
-        return old_time_per_move;
-    }
-    if (typeof(time_control) !== "object") {
-        return time_control;
-    }
-
-    try {
-        let t;
-        switch (time_control.system || time_control.time_control) {
-            case "fischer":
-                t = time_control.initial_time / 90 + time_control.time_increment;
-                break;
-            case "byoyomi":
-                t = time_control.main_time / 90 + time_control.period_time;
-                break;
-            case "simple":
-                t = time_control.per_move;
-                break;
-            case "canadian":
-                t = time_control.main_time / 90 + time_control.period_time / time_control.stones_per_period;
-                break;
-            case "absolute":
-                t = time_control.total_time / 90;
-                break;
-            case "none":
-                t = 0;
-                break;
-        }
-        return Math.round(t);
-    } catch (err) {
-        console.log("Error computing avergate move time for time control: ", time_control, old_time_per_move);
-        console.log(err);
-        return 60;
-    }
-} /* }}} */
-export function isLiveGame(time_control) {{{
+}
+export function isLiveGame(time_control) {
     let average_move_time = computeAverageMoveTime(time_control);
     return average_move_time > 0 && average_move_time < 3600;
-}}}
+}
 
-export function fullDurationString(seconds) { /* {{{ */
+export function durationString(seconds: number): string {
     let weeks = Math.floor(seconds / (86400 * 7)); seconds -= weeks * 86400 * 7;
     let days = Math.floor(seconds / 86400); seconds -= days * 86400;
     let hours = Math.floor(seconds / 3600); seconds -= hours * 3600;
     let minutes = Math.floor(seconds / 60); seconds -= minutes * 60;
 
-    function plurality(num, single, plural) {
-        num = Math.round(num);
-        if (num > 0) {
-            if (num === 1) {
-                return num + " " + single;
-            }
-            return num + " " + plural;
+    let coarse_fine_time_template = pgettext("Duration strings using two units (e.g. \"1 week 3 days\", \"2 hours 45 minutes\"). This is localizable because some languages may need to change the order of the coarse and fine times.",
+                                             "{{coarse}} {{fine}}");
+    let weeks_string = ngettext("%s week", "%s weeks", weeks);
+    let days_string = ngettext("%s day", "%s days", days);
+    let hours_string = ngettext("%s hour", "%s hours", hours);
+    let minutes_string = ngettext("%s minute", "%s minutes", minutes);
+    let seconds_string = ngettext("%s second", "%s seconds", seconds);
+
+    let coarsest_to_finest: {value: number, template: string}[] =
+        [
+            {value: weeks, template: weeks_string},
+            {value: days, template: days_string},
+            {value: hours, template: hours_string},
+            {value: minutes, template: minutes_string},
+            {value: seconds, template: seconds_string},
+        ];
+
+    for (let i = 0; i < coarsest_to_finest.length - 1; i++) {
+        let coarse = coarsest_to_finest[i];
+        let fine = coarsest_to_finest[i + 1];
+
+        if (!coarse.value) { continue; }
+
+        if (fine.value) {
+            return interpolate(coarse_fine_time_template,
+                { coarse: interpolate(coarse.template, [coarse.value]),
+                    fine: interpolate(fine.template, [fine.value]) });
         }
-        return "";
+        return interpolate(coarse.template, [coarse.value]);
     }
 
-    return "" +
-        (weeks ? " " + plurality(weeks, _("Week"), _("Weeks")) : "") +
-        (days ? " " + plurality(days, _("Day"), _("Days")) : "") +
-        (hours ? " " + plurality(hours, _("Hour"), _("Hours")) : "") +
-        (minutes ? " " + plurality(minutes, _("Minute"), _("Minutes")) : "") +
-        (seconds ? " " + plurality(seconds, _("Second"), _("Seconds")) : "");
-} /* }}} */
-export function durationString(seconds): string { /* {{{ */
-    let weeks = Math.floor(seconds / (86400 * 7)); seconds -= weeks * 86400 * 7;
-    let days = Math.floor(seconds / 86400); seconds -= days * 86400;
-    let hours = Math.floor(seconds / 3600); seconds -= hours * 3600;
-    let minutes = Math.floor(seconds / 60); seconds -= minutes * 60;
+    return interpolate(seconds_string, [seconds]);
+}
 
-    function plurality(num, single, plural): string {
-        num = Math.round(num);
-        if (num > 0) {
-            if (num === 1) {
-                return " " + num + " " + single;
-            }
-            return " " + num + " " + plural;
-        }
-        return "";
-    }
+export function daysOnlyDurationString(seconds): string {
+    let days = Math.floor(seconds / 86400);
 
     let ret: string = "";
-    if (weeks) {
-        ret += plurality(weeks, _("Week"), _("Weeks"));
-        ret += plurality(days, _("Day"), _("Days"));
-    }
-    else if (days) {
-        ret += plurality(days, _("Day"), _("Days"));
-        ret += plurality(hours, _("Hour"), _("Hours"));
-    }
-    else if (hours) {
-        ret += plurality(hours, _("Hour"), _("Hours"));
-        ret += plurality(minutes, _("Minute"), _("Minutes"));
-    }
-    else if (minutes) {
-        ret += plurality(minutes, _("Minute"), _("Minutes"));
-        ret += plurality(seconds, _("Second"), _("Seconds"));
-    }
-    else {
-        ret += plurality(seconds, _("Second"), _("Seconds"));
-    }
-
+    ret += interpolate(_("{{number_of_days}} {{day_or_days_plurality}}"), {number_of_days: days, day_or_days_plurality: ngettext("Day", "Days", days)});
     return ret.trim();
-} /* }}} */
-export function shortDurationString(seconds) { /* {{{ */
+}
+export function shortDurationString(seconds) {
     let weeks = Math.floor(seconds / (86400 * 7)); seconds -= weeks * 86400 * 7;
     let days = Math.floor(seconds / 86400); seconds -= days * 86400;
     let hours = Math.floor(seconds / 3600); seconds -= hours * 3600;
     let minutes = Math.floor(seconds / 60); seconds -= minutes * 60;
+    seconds = Math.round(seconds * 10) / 10.0;
     return "" +
         (weeks ? " " + interpolate(pgettext("Short time (weeks)", "%swk"), [weeks]) : "") +
         (days ? " " + interpolate(pgettext("Short time (days)", "%sd"), [days]) : "") +
         (hours ? " " + interpolate(pgettext("Short time (hours)", "%sh"), [hours]) : "") +
         (minutes ? " " + interpolate(pgettext("Short time (minutes)", "%sm"), [minutes]) : "") +
         (seconds ? " " + interpolate(pgettext("Short time (seconds)", "%ss"), [seconds]) : "");
-} /* }}} */
+}

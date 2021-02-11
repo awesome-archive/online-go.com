@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2012-2017  Online-Go.com
+ * Copyright (C) 2012-2020  Online-Go.com
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU Affero General Public License as
@@ -16,19 +16,21 @@
  */
 
 .PlayerDetails {
-    box-shadow: 0 2 3px rgba(0,0,0,0.2);
+    box-shadow: 0px 2px 3px rgba(0,0,0,0.2);
     border: 1px solid transparent;
     box-shadow: 0px 2px 10px 0px rgba(0, 0, 0, 0.16), 0px 2px 5px 0px rgba(0, 0, 0, 0.15);
     themed background-color shade4
     themed border-color shade3
     themed color fg
     max-width: 240px;
+    padding: 0.2rem;
 
     .details {
         display: flex;
         justify-content: space-between;
         .icon {
             display: inline-block;
+            flex-shrink: 0;
             position: relative;
             width: 64px;
             height: 64px;
@@ -44,6 +46,11 @@
                 width: 16px;
             }
 
+        }
+        .player-info {
+            flex-shrink: 1;
+            margin-left: 6px;
+            max-width: 170px;
         }
         .player-link {
             cursor: pointer !important;
@@ -62,7 +69,7 @@
         justify-content: space-between;
 
         > button {
-            min-width: 45%;
+            min-width: 48%;
             text-align: left;
             .fa, .ogs-goban {
                 padding-right: 0.5rem;

@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2012-2017  Online-Go.com
+ * Copyright (C) 2012-2020  Online-Go.com
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU Affero General Public License as
@@ -16,9 +16,12 @@
  */
 
 import * as React from "react";
-import {_, _setCurrentLanguage, current_language, languages} from "translate";
+import {_, setCurrentLanguage, current_language, languages} from "translate";
 import {Modal, openModal} from "Modal";
-import preferences from "preferences";
+import * as preferences from "preferences";
+
+interface Events {
+}
 
 interface LanguagePickerProperties {
 }
@@ -45,7 +48,7 @@ export let LanguagePicker = (props: LanguagePickerProperties) => (
     </span>
 );
 
-class LanguagePickerModal extends Modal<LanguagePickerProperties, any> {
+class LanguagePickerModal extends Modal<Events, LanguagePickerProperties, any> {
     constructor(props) {
         super(props);
         this.state = {
@@ -55,7 +58,7 @@ class LanguagePickerModal extends Modal<LanguagePickerProperties, any> {
 
     setLanguage(language_code) {
         preferences.set("language", language_code);
-        _setCurrentLanguage(language_code);
+        setCurrentLanguage(language_code);
         this.close();
         window.location.reload();
     }

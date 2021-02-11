@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2012-2017  Online-Go.com
+ * Copyright (C) 2012-2020  Online-Go.com
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU Affero General Public License as
@@ -18,8 +18,12 @@
 import * as React from "react";
 import {_} from "translate";
 import {put, get} from "requests";
-import {longRankString, errorAlerter, ignore} from "misc";
+import {errorAlerter, ignore} from "misc";
+import {proRankList} from "rank_utils";
 import {Modal, openModal} from "Modal";
+
+interface Events {
+}
 
 interface ModerateUserProperties {
     playerId?: number;
@@ -27,16 +31,9 @@ interface ModerateUserProperties {
 
 declare var swal;
 
+let pro_ranks = proRankList(false);
 
-let ranks = [];
-for (let i = 0; i < 40; ++i) {
-    ranks.push({"value": i, "text": longRankString({"ranking": i})});
-}
-for (let i = 37; i < 46; ++i) {
-    ranks.push({"value": i, "text": longRankString({"ranking": i, "pro": 1})});
-}
-
-export class ModerateUser extends Modal<ModerateUserProperties, any> {
+export class ModerateUser extends Modal<Events, ModerateUserProperties, any> {
     constructor(props) {
         super(props);
         this.state = {
@@ -45,19 +42,18 @@ export class ModerateUser extends Modal<ModerateUserProperties, any> {
         };
     }
 
-    componentWillMount() {
-        super.componentWillMount();
-        get(`players/${this.props.playerId}/full`)
-        .then((dets) => {
-            console.log(dets);
-            this.setState(Object.assign({loading: false}, dets.user, {bot_owner: dets.user.bot_owner ? dets.user.bot_owner.id : null}));
+    UNSAFE_componentWillMount() {
+        get("players/%%/full", this.props.playerId)
+        .then((result) => {
+            console.log(result);
+            this.setState(Object.assign({loading: false}, result.user, {bot_owner: result.user.bot_owner ? result.user.bot_owner.id : null}));
         })
         .catch(errorAlerter);
     }
 
     save = () => {
         swal({
-            text: "Moderator note",
+            text: _("Moderator note"),
             input: "text",
             showCancelButton: true,
         })
@@ -71,16 +67,15 @@ export class ModerateUser extends Modal<ModerateUserProperties, any> {
             let fields = [
                 "is_bot", "is_banned", "is_shadowbanned",
                 "bot_owner", "bot_ai", "username",
-                "rating", "rating_blitz", "rating_live", "rating_correspondence",
-                "ranking", "ranking_blitz", "ranking_live", "ranking_correspondence",
                 "supporter", "username", "password", "email",
+                "is_announcer", "ranking", "professional",
+                "ui_class_extra"
             ];
 
             let settings: any = {};
             for (let f of fields) {
                 settings[f] = this.state[f];
             }
-            settings.numProvisional = this.state.provisional_games_left;
 
             settings.moderation_note = reason;
 
@@ -94,56 +89,18 @@ export class ModerateUser extends Modal<ModerateUserProperties, any> {
     }
     setLockedUsername = (ev) => this.setState({locked_username: ev.target.checked});
     setSupporter = (ev) => this.setState({supporter: ev.target.checked});
+    setAnnouncer = (ev) => this.setState({is_announcer: ev.target.checked});
     setProfessional = (ev) => this.setState({professional: ev.target.checked});
     setBanned = (ev) => this.setState({is_banned: ev.target.checked});
     setShadowbanned = (ev) => this.setState({is_shadowbanned: ev.target.checked});
     setBot = (ev) => this.setState({is_bot: ev.target.checked});
     setBotOwner = (ev) => this.setState({bot_owner: parseInt(ev.target.value)});
-    setNumProvisional = (ev) => this.setState({provisional_games_left: parseInt(ev.target.value)});
-
-    setRanking = (ev) => this.syncRankRating({ranking: ev.target.value});
-    setRating = (ev) => this.syncRankRating({rating: ev.target.value});
-    setRankingBlitz = (ev) => this.syncRankRating({ranking_blitz: ev.target.value});
-    setRatingBlitz = (ev) => this.syncRankRating({rating_blitz: ev.target.value});
-    setRankingLive = (ev) => this.syncRankRating({ranking_live: ev.target.value});
-    setRatingLive = (ev) => this.syncRankRating({rating_live: ev.target.value});
-    setRankingCorrespondence = (ev) => this.syncRankRating({ranking_correspondence: ev.target.value});
-    setRatingCorrespondence = (ev) => this.syncRankRating({rating_correspondence: ev.target.value});
 
     setUsername = (ev) => this.setState({username: ev.target.value});
     setEmail = (ev) => this.setState({email: ev.target.value});
     setPassword = (ev) => this.setState({password: ev.target.value});
-
-    syncRankRating(obj) {
-        let key = null;
-        let value = null;
-        for (let k in obj) {
-            key = k;
-            obj[k] = value = parseInt(obj[k]);
-        }
-
-        let ranking = /ranking/.test(key);
-
-        let blitz = /blitz/.test(key);
-        let live = /live/.test(key);
-        let correspondence = /corr/.test(key);
-        let overall = !blitz && !live && !correspondence;
-
-        if (ranking) {
-            let target_key = "rating" + (blitz ? "_blitz" : "") + (live ? "_live" : "")  + (correspondence ? "_correspondence" : "");
-            let rating = value * 100 + 50 - 900;
-            obj[target_key] = rating;
-            this.setState(obj);
-        } else {
-            let target_key = "ranking" + (blitz ? "_blitz" : "") + (live ? "_live" : "")  + (correspondence ? "_correspondence" : "");
-            let ranking = Math.floor((value + 900) / 100);
-            ranking = Math.max(0, Math.min(45, ranking));
-            obj[target_key] = ranking;
-            this.setState(obj);
-        }
-
-        console.log(obj);
-    }
+    setRanking = (ev) => this.setState({ranking: ev.target.value});
+    setUiClassExtra = (ev) => this.setState({ui_class_extra: ev.target.value});
 
     render() {
         let user = this.state;
@@ -159,17 +116,30 @@ export class ModerateUser extends Modal<ModerateUserProperties, any> {
                             <div className="col-sm-4">
                                 <h3>Special Attributes</h3>
                                 <dl className="horizontal left">
+                                    {/*
                                     <dt><label htmlFor="supporter">Supporter</label></dt>
                                     <dd><input id="supporter" type="checkbox" checked={user.supporter} onChange={this.setSupporter} /></dd>
+                                    */}
 
-                                    <dt><label htmlFor="banned">Banned</label></dt>
-                                    <dd><input id="banned" type="checkbox" checked={user.is_banned} onChange={this.setBanned} /></dd>
+                                    <dt><label htmlFor="announcer">Announcer</label></dt>
+                                    <dd><input id="announcer" type="checkbox" checked={user.is_announcer} onChange={this.setAnnouncer} /></dd>
 
-                                    <dt><label htmlFor="shadowbanned">Shadowbanned</label></dt>
-                                    <dd><input id="shadowbanned" type="checkbox" checked={user.is_shadowbanned} onChange={this.setShadowbanned} /></dd>
+                                    <dt><label htmlFor="professional">Professional</label></dt>
+                                    <dd>
+                                        <input id="professional" type="checkbox" checked={user.professional} onChange={this.setProfessional} />
+                                        {(user.professional || null) &&
+                                            <select value={user.ranking} onChange={this.setRanking}>
+                                                {pro_ranks.map((r, idx) => (
+                                                    <option key={idx} value={r.rank}>{r.label}</option>
+                                                ))}
+                                            </select>
+                                        }
+                                    </dd>
 
-                                    <dt><label htmlFor="numProvisional">Provisional games</label></dt>
-                                    <dd><input id="numProvisional" type="number" min={0} max={50} value={user.provisional_games_left} onChange={this.setNumProvisional} /></dd>
+                                    <dt><label htmlFor="ui-class-extra">CSS Class</label></dt>
+                                    <dd>
+                                        <input type="text" id="ui-class-extra" value={user.ui_class_extra} onChange={this.setUiClassExtra} autoComplete="off"/>
+                                    </dd>
 
                                     <dt><label htmlFor="bot">Bot</label></dt>
                                     <dd>
@@ -196,47 +166,11 @@ export class ModerateUser extends Modal<ModerateUserProperties, any> {
                                     <dd>
                                         <input type="text" id="password" value={user.password} onChange={this.setPassword} autoComplete="off"/>
                                     </dd>
-                                </dl>
-                                <h3>Rank and Rating</h3>
-                                <dl className="horizontal right">
-                                    <dt><label htmlFor="rank-overall">Overall</label></dt>
-                                    <dd>
-                                        <select id="rank-overall" value={user.ranking} onChange={this.setRanking}>
-                                            {ranks.map((r, idx) => (
-                                                <option key={idx} value={r.value}>{r.text}</option>
-                                            ))}
-                                        </select>
-                                        <input type="number" id="rating-overall" value={user.rating} onChange={this.setRating}/>
-                                    </dd>
+                                    <dt><label htmlFor="banned">Banned</label></dt>
+                                    <dd><input id="banned" type="checkbox" checked={user.is_banned} onChange={this.setBanned} /></dd>
 
-                                    <dt><label htmlFor="rank-blitz">Blitz</label></dt>
-                                    <dd>
-                                        <select id="rank-blitz" value={user.ranking_blitz} onChange={this.setRankingBlitz}>
-                                            {ranks.map((r, idx) => (
-                                                <option key={idx} value={r.value}>{r.text}</option>
-                                            ))}
-                                        </select>
-                                        <input type="number" id="rating-blitz" value={user.rating_blitz} onChange={this.setRatingBlitz}/>
-                                    </dd>
-                                    <dt><label htmlFor="rank-live">Live</label></dt>
-                                    <dd>
-                                        <select id="rank-live" value={user.ranking_live} onChange={this.setRankingLive}>
-                                            {ranks.map((r, idx) => (
-                                                <option key={idx} value={r.value}>{r.text}</option>
-                                            ))}
-                                        </select>
-                                        <input type="number" id="rating-live" value={user.rating_live} onChange={this.setRatingLive}/>
-                                    </dd>
-                                    <dt><label htmlFor="rank-correspondence">Corr.</label></dt>
-                                    <dd>
-                                        <select id="rank-correspondence" value={user.ranking_correspondence} onChange={this.setRankingCorrespondence}>
-                                            {ranks.map((r, idx) => (
-                                                <option key={idx} value={r.value}>{r.text}</option>
-                                            ))}
-                                        </select>
-                                        <input type="number" id="rating-correspondence" value={user.rating_correspondence} onChange={this.setRatingCorrespondence}/>
-                                    </dd>
-
+                                    <dt><label htmlFor="shadowbanned">Shadowbanned</label></dt>
+                                    <dd><input id="shadowbanned" type="checkbox" checked={user.is_shadowbanned} onChange={this.setShadowbanned} /></dd>
                                 </dl>
                             </div>
                         </div>

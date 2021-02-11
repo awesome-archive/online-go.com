@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2012-2017  Online-Go.com
+ * Copyright (C) 2012-2020  Online-Go.com
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU Affero General Public License as
@@ -30,9 +30,14 @@
         .fa-picture-o:hover {
             themed color shade2
         }
+        
     }
     .admins {
         margin-bottom: 1rem;
+
+        >b, >span {
+            margin-right:1rem;
+        }
     }
 
     .fa-pencil, .fa-save {
@@ -51,6 +56,10 @@
         width: 128px;
     }
 
+    .Player {
+        margin-right:0.5em;
+    }
+
     textarea {
         width: 100%;
         margin-top: 1rem;
@@ -64,6 +73,9 @@
 
     .new-news {
         margin: 0.5rem;
+        input {
+            width: 100%;
+        }
     }
 
     .news th.none {
@@ -73,4 +85,44 @@
     .Card {
         overflow-x: auto;
     }
+
+
+    .EmbeddedChatCard {
+        flex-shrink: 0;
+        flex-grow: 1;
+        min-width: 15rem;
+        flex-basis: 15rem;
+        height: 40rem;
+        overflow: hidden;
+        .Chat {
+        }
+    }
+
+    .ladders {
+        div {
+            text-align: center;
+            margin: 0.5rem;
+        }
+    }
+
+    .invitation-requests {
+        .fa {
+            display: inline-block;
+            width: 1.1rem;
+            height: 1.1rem;
+            text-align: center;
+            margin-left: 0.2rem;
+            margin-right: 0.2rem;
+            border-radius: 0.1rem;
+            themed color colored-background-fg
+            cursor: pointer;
+        }
+        .fa-times {
+            themed background-color reject
+        }
+        .fa-check {
+            themed background-color success
+        }
+    }
 }
+

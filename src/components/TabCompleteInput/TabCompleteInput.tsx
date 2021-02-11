@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2012-2017  Online-Go.com
+ * Copyright (C) 2012-2020  Online-Go.com
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU Affero General Public License as
@@ -17,23 +17,22 @@
 
 import * as React from "react";
 
-export class TabCompleteInput extends React.PureComponent<any, any> {
-    refs: {
-        input;
-    };
-
-    constructor(props) {
-        super(props);
-        this.state = { };
-    }
-
-    componentDidMount() {
-        ($(this.refs.input) as any).nicknameTabComplete();
-    }
-
-    render() {
-        return (
-            <input ref="input" {...this.props} />
-        );
-    }
+interface TabCompleteInputProperties {
+    id?:string;
+    placeholder: string;
+    disabled?: boolean;
+    onKeyPress: (event: React.KeyboardEvent<HTMLInputElement>) => boolean;
+    className?: string;
+    onFocus?: (event: React.FocusEvent<HTMLInputElement>) => void;
+    autoFocus?: boolean;
 }
+
+export const TabCompleteInput = React.forwardRef<HTMLInputElement, React.HTMLProps<HTMLInputElement>>(
+    (props: TabCompleteInputProperties, ref): JSX.Element => {
+        React.useEffect(() => {
+            ($((ref as any).current) as any).nicknameTabComplete();
+        }, [(ref as any).current]);
+
+        return <input ref={ref} {...props} />;
+    }
+);

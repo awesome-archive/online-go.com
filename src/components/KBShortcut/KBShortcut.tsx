@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2012-2017  Online-Go.com
+ * Copyright (C) 2012-2020  Online-Go.com
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU Affero General Public License as
@@ -16,7 +16,23 @@
  */
 
 import * as React from "react";
+import * as preferences from "preferences";
 
+let binding_id = 0;
+
+class Binding {
+    id;
+    shortcut;
+    fn;
+    priority;
+
+    constructor(shortcut, fn, priority) {
+        this.id = ++binding_id;
+        this.shortcut = shortcut;
+        this.fn = fn;
+        this.priority = priority;
+    }
+}
 
 interface KBProps {
     shortcut: string;
@@ -33,7 +49,7 @@ export class KBShortcut extends React.Component<KBProps, any> {
     shouldComponentUpdate() {
         return false;
     }
-    componentWillReceiveProps(next_props) {
+    UNSAFE_componentWillReceiveProps(next_props) {
         kb_unbind(this.binding);
         this.binding = kb_bind(next_props.shortcut, next_props.action, next_props.priority || 0);
     }
@@ -105,21 +121,6 @@ let modifiers = {
 
 let bound_shortcuts = {string: Binding};
 
-let binding_id = 0;
-class Binding {
-    id;
-    shortcut;
-    fn;
-    priority;
-
-    constructor(shortcut, fn, priority) {
-        this.id = ++binding_id;
-        this.shortcut = shortcut;
-        this.fn = fn;
-        this.priority = priority;
-    }
-}
-
 function sanitize_shortcut(shortcut) {
     let shift = shortcut.indexOf("shift-") >= 0;
     let ctrl  = shortcut.indexOf("ctrl-") >= 0;
@@ -151,13 +152,19 @@ function sanitize_shortcut(shortcut) {
 
 $(() => {
     $(document).on("keydown", (e) => {
-        if (document.activeElement.tagName === "INPUT" ||
-            document.activeElement.tagName === "TEXTAREA" ||
-            document.activeElement.tagName === "SELECT") {
+        try {
+            if (document.activeElement.tagName === "INPUT" ||
+                document.activeElement.tagName === "TEXTAREA" ||
+                document.activeElement.tagName === "SELECT" ||
+                document.activeElement.className === "qc-option") {
 
-            if (!(e.keyCode in input_enabled_keys)) {
-                return true;
+                if (!(e.keyCode in input_enabled_keys)) {
+                    return true;
+                }
             }
+        } catch (e) {
+            /* ie 11 throws this */
+            console.warn(e);
         }
 
         let shortcut = "";
@@ -173,6 +180,12 @@ $(() => {
             shortcut += String.fromCharCode(e.keyCode);
         }
         shortcut = sanitize_shortcut(shortcut);
+
+        if (!preferences.get('function-keys-enabled')) {
+            if (/f[0-9]/.test(shortcut)) {
+                return true;
+            }
+        }
 
         if (shortcut in bound_shortcuts && bound_shortcuts[shortcut].length > 0) {
             let binding = bound_shortcuts[shortcut][bound_shortcuts[shortcut].length - 1];

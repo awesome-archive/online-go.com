@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2012-2017  Online-Go.com
+ * Copyright (C) 2012-2020  Online-Go.com
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU Affero General Public License as
@@ -19,11 +19,11 @@ import * as React from "react";
 import {_, pgettext, interpolate} from "translate";
 import {post, get} from "requests";
 import {errorAlerter} from "misc";
-import {GoThemes} from "goban";
+import {GoThemes, GoThemesSorted} from "goban";
 import {getSelectedThemes} from "preferences";
-import preferences from "preferences";
+import * as preferences from "preferences";
 import {PersistentElement} from "PersistentElement";
-import data from "data";
+import * as data from "data";
 
 interface GobanThemePickerProperties {
     // id?: any,
@@ -51,15 +51,22 @@ export class GobanThemePicker extends React.PureComponent<GobanThemePickerProper
             boardCustom: this.getCustom("board"),
             lineCustom: this.getCustom("line"),
             whiteCustom: this.getCustom("white"),
-            blackCustom: this.getCustom("black")
+            blackCustom: this.getCustom("black"),
+            urlCustom: this.getCustom("url")
         };
 
-        for (let k in GoThemes) {
+        for (let k in GoThemesSorted) {
             this.canvases[k] = [];
             this.selectTheme[k] = {};
-            for (let theme of GoThemes[k].sorted) {
+            for (let theme of GoThemesSorted[k]) {
                 this.canvases[k].push($("<canvas>").attr("width", this.state.size).attr("height", this.state.size));
-                theme.styles = Object.assign({height: this.state.size + "px", width: this.state.size + "px"}, new theme().getReactStyles());
+                theme.styles = Object.assign(
+                    {
+                        height: this.state.size + "px",
+                        width: this.state.size + "px"
+                    },
+                    theme.getReactStyles()
+                ) as unknown as { [style_name: string]: string };
 
                 this.selectTheme[k][theme.theme_name] = () => {
                     preferences.set(`goban-theme-${k}`, theme.theme_name);
@@ -75,7 +82,7 @@ export class GobanThemePicker extends React.PureComponent<GobanThemePickerProper
     componentDidMount() {
         setTimeout(() => this.renderPickers(), 50);
     }
-    //componentWillReceiveProps(next_props) { }
+    //UNSAFE_componentWillReceiveProps(next_props) { }
     //componentDidUpdate(old_props, old_state) { }
     componentWillUnmount() {
     }
@@ -94,6 +101,10 @@ export class GobanThemePicker extends React.PureComponent<GobanThemePickerProper
         this.setState(up);
         this.renderPickers();
 
+        if (key === "url") { // Changing the custom image should update the board theme
+            key = "board";
+        }
+
         if (key === "line") { // Changing the line color should update the board theme
             key = "board";
         }
@@ -102,21 +113,25 @@ export class GobanThemePicker extends React.PureComponent<GobanThemePickerProper
 
     render() {
         let inputStyle = {height: `${this.state.size}px`, width: `${this.state.size * 1.5}px`};
-        let {boardCustom, lineCustom, whiteCustom, blackCustom} = this.state;
+        let {boardCustom, lineCustom, whiteCustom, blackCustom, urlCustom} = this.state;
 
         return (
             <div className="GobanThemePicker">
                 <div className="theme-set">
-                    {GoThemes.board.sorted.map((theme, idx) => (
+                    {GoThemesSorted.board.map((theme, idx) => (
                         <div key={theme.theme_name}
                             className={"selector" + (this.state.board === theme.theme_name ? " active" : "")}
                             style={{
                                 ...theme.styles,
-                                ...(theme.theme_name === "Plain" ? {backgroundColor: boardCustom} : {})
+                                ...(theme.theme_name === "Plain" ? {backgroundImage: "linear-gradient(-45deg, orange,yellow,green,blue,indigo,violet)"} : {})
                             }}
                             onClick={this.selectTheme["board"][theme.theme_name]}
                             >
-                            <PersistentElement elt={this.canvases.board[idx]} />
+
+                            {theme.theme_name === "Plain"
+                                ? <span>{pgettext("Custom board theme", "Custom")}</span>
+                                : <PersistentElement elt={this.canvases.board[idx]} />
+                            }
                         </div>
                     ))}
                     {this.state.board === "Plain" &&
@@ -125,12 +140,19 @@ export class GobanThemePicker extends React.PureComponent<GobanThemePickerProper
                             <button className="color-reset" onClick={this.setCustom.bind(this, "board")}><i className="fa fa-undo"/></button>
                             <input type="color" style={inputStyle} value={lineCustom} onChange={this.setCustom.bind(this, "line")} />
                             <button className="color-reset" onClick={this.setCustom.bind(this, "line")}><i className="fa fa-undo"/></button>
+                            <input className="customUrlSelector"
+                                type="text"
+                                value={urlCustom}
+                                placeholder={pgettext("Custom background image url for the goban", "Custom background URL")}
+                                onFocus={e => e.target.select()}
+                                onChange={this.setCustom.bind(this, "url")}
+                            />
                         </div>
                     }
                 </div>
 
                 <div className="theme-set">
-                    {GoThemes.white.sorted.map((theme, idx) => (
+                    {GoThemesSorted.white.map((theme, idx) => (
                         <div key={theme.theme_name}
                             className={"selector" + (this.state.white === theme.theme_name ? " active" : "")}
                             style={theme.styles}
@@ -148,7 +170,7 @@ export class GobanThemePicker extends React.PureComponent<GobanThemePickerProper
                 </div>
 
                 <div className="theme-set">
-                    {GoThemes.black.sorted.map((theme, idx) => (
+                    {GoThemesSorted.black.map((theme, idx) => (
                         <div key={theme.theme_name}
                             className={"selector" + (this.state.black === theme.theme_name ? " active" : "")}
                             style={theme.styles}
@@ -168,13 +190,12 @@ export class GobanThemePicker extends React.PureComponent<GobanThemePickerProper
         );
     }
 
-    renderPickers() {{{
+    renderPickers() {
         let start = new Date();
         let square_size = this.state.size;
 
-        for (let i = 0; i < GoThemes.board.sorted.length; ++i) {
-            let Theme = GoThemes.board.sorted[i];
-            let theme = new Theme();
+        for (let i = 0; i < GoThemesSorted.board.length; ++i) {
+            let theme = GoThemesSorted.board[i];
             let canvas = this.canvases.board[i];
             let ctx = canvas[0].getContext("2d");
             ctx.clearRect(0, 0, square_size, square_size);
@@ -200,9 +221,8 @@ export class GobanThemePicker extends React.PureComponent<GobanThemePickerProper
         }
 
         let plain_board = new (GoThemes["board"]["Plain"])();
-        for (let i = 0; i < GoThemes.white.sorted.length; ++i) {
-            let Theme = GoThemes.white.sorted[i];
-            let theme = new Theme();
+        for (let i = 0; i < GoThemesSorted.white.length; ++i) {
+            let theme = GoThemesSorted.white[i];
             let canvas = this.canvases.white[i];
             let ctx = canvas[0].getContext("2d");
             let radius = Math.round(square_size / 2.2);
@@ -211,9 +231,8 @@ export class GobanThemePicker extends React.PureComponent<GobanThemePickerProper
             theme.placeWhiteStone(ctx, ctx, stones[0], square_size / 2, square_size / 2, radius);
         }
 
-        for (let i = 0; i < GoThemes.black.sorted.length; ++i) {
-            let Theme = GoThemes.black.sorted[i];
-            let theme = new Theme();
+        for (let i = 0; i < GoThemesSorted.black.length; ++i) {
+            let theme = GoThemesSorted.black[i];
             let canvas = this.canvases.black[i];
             let ctx = canvas[0].getContext("2d");
             let radius = Math.round(square_size / 2.2);
@@ -224,5 +243,5 @@ export class GobanThemePicker extends React.PureComponent<GobanThemePickerProper
 
         let end = new Date();
         //console.info("Render time: ", (end.getTime() - start.getTime()))
-    }}}
+    }
 }

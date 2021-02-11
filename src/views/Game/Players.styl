@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2012-2017  Online-Go.com
+ * Copyright (C) 2012-2020  Online-Go.com
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU Affero General Public License as
@@ -30,8 +30,9 @@
     flex-direction: row;
     box-sizing: border-box;
     padding: 0.1rem;
+    justify-content: space-around;
 
-    .player-container { /* {{{ */
+    .player-container {
         position: relative;
         display: flex;
         flex-direction: column;
@@ -55,14 +56,26 @@
             background-image: none;
             font-size: 1.1rem;
         }
-
-
-
-        &:first-child {
-            margin-right: 0.1rem;
+        .hidden {
+            visibility: hidden;
         }
-        &:last-child {
-            margin-left: 0.1rem;
+
+        .auto-resign-overlay {
+            opacity: 0.9;
+            z-index: z.goban.score-details;
+            background-color #555;
+            color #fff;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            align-content: center;
+            justify-content: center;
+            font-size: font-size-big;
+            .fa-bolt {
+                font-size: 150%;
+            }
+            padding-left: 2px;
+            min-width: inherit;  // make sure we are as wide as the player avatar that contains us
         }
     }
 
@@ -103,6 +116,10 @@
         box-shadow: 0 2px 5px rgba(50,50,50,.51);
         themed background player-white-background
         themed color player-white-fg
+
+        .paused-correspondence {
+            themed color player-white-paused-clock
+        }
     }
 
     .black.player-container {
@@ -110,6 +127,10 @@
         themed color player-black-fg
         border-top: 1px solid #202020;
         box-shadow: 0 2px 5px rgba(20,20,20,.71);
+
+        .paused-correspondence {
+            themed color player-black-paused-clock
+        }
 
         .player-name {
             color: #00B8FF;
@@ -124,11 +145,16 @@
         font-size: 1.1em;
     }
 
-    .player-flag { 
+    .player-flag {
         position: absolute;
-        display: inline-block; 
+        display: inline-block;
         left: 3rem;
         top: 3rem;
+
+        .flag {
+            vertical-align: bottom;
+            margin-bottom: 0;
+        }
     }
 
 
@@ -144,10 +170,14 @@
         text-align: left;
     }
     .black.player-name-container{
+        .Player {
             themed color player-black-name;
+        }
     }
     .white.player-name-container{
+        .Player {
             themed color player-white-name;
+        }
     }
 
 
@@ -156,11 +186,11 @@
         font-size: 1.1em;
         margin-top: 0.2em;
     }
-    /* }}} */
 
-    .ChatPresenceIndicator { /* {{{ */
+
+    .ChatPresenceIndicator {
         position: absolute;
-        display: inline-block; 
+        display: inline-block;
         left: 0.25em;
         top: 0.25em;
         font-size: 0.50em !important;
@@ -177,81 +207,7 @@
             color: #00ff00;
         }
     }
-    /* }}} */
 
-    div.in-game-clock { /* {{{ */
-        flex: 1;
-        display: flex;
-        flex-direction: row;
-        flex-wrap: wrap;
-        justify-content: flex-end;
-        align-items: center;
-
-        .main-time {
-            flex-grow: 1;
-            display: inline-block;
-            font-size: 14pt;
-        }
-
-        &.paused .main-time {
-            animation-name: pulsate-paused-clock;
-            animation-duration: 1s;
-            animation-timing-function: step-end;
-            animation-iteration-count: infinite
-        }
-
-        .overtime-container {
-            flex-grow: 1;
-            display: inline-block;
-        }
-        .periods-container {
-            display: flex;
-            justify-content: center;
-            align-items: stretch;
-            align-content: stretch;
-
-            div {
-                //margin: auto;
-                margin-left: 0.5em;
-                margin-right: 0.5em;
-            }
-        }
-
-        .periods {
-            display: inline-block;
-            font-size: 10pt;
-        }
-        .period-time {
-            display: inline-block;
-            font-size: 10pt;
-        }
-        .overtime {
-            font-size: 6pt;
-            text-align: center;
-        }
-
-        .pause-text {
-            width: 100%;
-            text-align: right;
-            font-size: font-size-small;
-            display: block;
-        }
-
-        .boxed {
-            text-align: right;
-        }
-    }
-
-    .in-overtime {
-        .overtime {
-            font-weight: bold;
-            color: #a55 !important;
-        }
-        .boxed {
-            border-color: #a55 !important;
-        }
-    }
-    
     #game-black-clock{
         themed color player-black-clock
     }
@@ -275,28 +231,25 @@
         font-size: 0.7em;
     }
 
-    #game-black-clock .start_clock, #game-white-clock .start_clock {
-        color: #147AFF !important;
-    }
-
     #game-black-clock .low_time, #game-white-clock .low_time {
         color: #f44 !important;
         font-weight: bold;
     }
 
-
     #black_score, #white_score, .clock-container {
         font-weight: bold;
     }
-    /* }}} */
 
-    .score-container { /* {{{ */
+
+    .score-container {
         margin-top: 0.5em;
         display: flex;
         flex-direction: row;
         flex-wrap: wrap;
         justify-content: space-between;
         position: relative;
+        user-select: none;
+        cursor: help;
 
         .score-details {
             position: absolute;
@@ -311,20 +264,20 @@
             visibility: hidden;
         }
 
-        &:hover .score-details {
+        &.show-score-breakdown .score-details {
             z-index: z.goban.score-details;
             visibility: visible;
             font-size: 1.2rem;
         }
     }
 
-    .score_breakdown { 
-        font-size: .8em; 
-        text-align: right; 
-        padding-right: .3em; 
+    .score_breakdown {
+        font-size: .8em;
+        text-align: right;
+        padding-right: .3em;
     }
-    .score_breakdown div div { 
-        display: inline-block; 
+    .score_breakdown div div {
+        display: inline-block;
         width: 3em;
     }
 
@@ -334,8 +287,12 @@
         padding-bottom: 1em;
     }
 
-    /* }}} */
+    .Clock {
+        .main-time {
+            font-size: 14pt;
 
+        }
+    }
 }
 
 
@@ -343,12 +300,19 @@
     .player-icon-container {
         flex-basis: 1.5rem;
         min-height: 1.5rem;
-        min-width: 1.5rem;
+        min-width: 4rem; // need this width to accomodate diconnect timer
         .player-flag {
             top: 0.5rem;
             left: 1rem;
         }
-
+        .auto-resign-overlay {
+            flex-direction: row;
+            font-size: inherit;
+            .fa-bolt {
+                font-size: inherit;
+                margin-right: 2px;
+            }
+        }
     }
     .player-name-container {
         font-size: font-size-small;
@@ -362,12 +326,123 @@
     .score-container {
         margin-top: 0;
     }
-    div.in-game-clock {
+
+    .Clock {
         .main-time {
             font-size: font-size-small;
         }
-        .periods, .period-time {
+        .byo-yomi-container,
+        .canadian-container
+        {
             font-size: font-size-extra-small;
         }
     }
 }
+
+body.dark .MainGobanView.zen .players {
+    .white {
+        &.player-container {
+            background: linear-gradient(#2C2C2C 0%, #383838 100%);
+            border: 1px solid #181818;
+            color: #DDD;
+        }
+    }
+    #game-white-clock,
+    .white .score-container {
+        color: #DDD;
+    }
+
+    .black {
+        &.player-container {
+            background: linear-gradient(#111111 0%, #1A1A1A 100%);
+            // background: none;
+            background-color: #111111;
+            border: 1px solid #181818;
+            color: #BBB;
+        }
+    }
+    #game-black-clock,
+    .black .score-container {
+        color: #BBB;
+    }
+}
+body.light .MainGobanView.zen .players {
+    .black.player-container {
+        background: linear-gradient(#666 0%, #181818 100%);
+    }
+}
+.MainGobanView.zen .play-controls{
+    .game-state {
+        display: none;
+    }
+}
+.MainGobanView.zen .players {
+    .black.player-container {
+        border-top: none;
+    }
+    .player-container {
+        justify-content: center;
+        min-width: 150px;
+    }
+    .player-icon-clock-row {
+        width: auto;
+        flex-grow: 1;
+    }
+    .Clock {
+        min-height: 80px;
+        .pause-text {
+            display: none;
+        }
+        .main-time,
+        .period-time {
+            line-height: 50px;
+            font-size: 26pt;
+            text-align: center;
+        }
+        .byo-yomi-container,
+        .canadian-clock-container {
+            display: block;
+            font-size: font-size-mid
+            flex-grow: 1;
+        }
+    }
+    .Clock:not(.in-overtime) {
+        .byo-yomi-container,
+        .canadian-clock-container {
+            display: none;
+        }
+    }
+    .captures {
+        display: flex;
+        justify-content: center;
+        flex-basis: 70%;
+    }
+    .score-container {
+        margin: 0px;
+        justify-content: center;
+        flex-grow: 0;
+    }
+    .num-captures-container {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        flex-direction: row;
+        flex-grow: 1;
+        .stone-image {
+            width: 14px;
+            height: 14px;
+        }
+        .num-captures-stone {
+            margin-left: 3px;
+            margin-right: 3px;
+        }
+    }
+    .player-icon-container,
+    .player-name-container,
+    .player-name-plain,
+    .score-details,
+    .komi {
+        display: none;
+    }
+}
+

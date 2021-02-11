@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2012-2017  Online-Go.com
+ * Copyright (C) 2012-2020  Online-Go.com
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU Affero General Public License as
@@ -16,29 +16,34 @@
  */
 
 import * as React from "react";
-import {browserHistory} from "react-router";
+import * as ReactDOM from "react-dom";
+import {browserHistory} from "ogsHistory";
 import {_, pgettext, interpolate} from "translate";
 import {post, del} from "requests";
 import {comm_socket} from "sockets";
-import {EventEmitter} from "eventemitter3";
-import data from "data";
+import {TypedEventEmitter} from "TypedEventEmitter";
+import * as data from "data";
 import {openGameAcceptModal} from "GameAcceptModal";
-import {shortDurationString, shortShortTimeControl, timeControlSystemText, computeAverageMoveTime} from "TimeControl";
-import {rankString, getRelativeEventPosition, errorAlerter} from "misc";
-import {makePlayerLink} from "Player";
+import {shortDurationString, shortShortTimeControl, timeControlSystemText} from "TimeControl";
+import {computeAverageMoveTime} from 'goban';
+import {getRelativeEventPosition, errorAlerter} from "misc";
+import {rankString, bounded_rank} from "rank_utils";
 import {kb_bind, kb_unbind} from "KBShortcut";
-
+import {Player} from "Player";
+import * as player_cache from "player_cache";
 
 declare let swal;
 
-
+interface Events {
+    "challenges": Array<any>;
+}
 
 let MAX_RATIO = 0.99;
 
 interface SeekGraphConfig  {
     canvas: any;
     show_live_games?: boolean;
-};
+}
 
 
 function dist(C, pos) {
@@ -72,10 +77,10 @@ function lists_are_equal(A, B) {
     return true;
 }
 
-export class SeekGraph extends EventEmitter {
+export class SeekGraph extends TypedEventEmitter<Events> {
     static blitz_line_ratio = 0.1;
     static live_line_ratio = 0.6;
-    static time_columns = [ /* {{{ */
+    static time_columns = [
         {"ratio": 0.97, "time_per_move": 0},
         {"ratio": 0.000001, "time_per_move": 1},
 
@@ -99,7 +104,7 @@ export class SeekGraph extends EventEmitter {
         {"ratio": 0.85, "time_per_move": 172800},
         {"ratio": 0.90, "time_per_move": 259200},
         {"ratio": 0.95, "time_per_move": 604800},
-    ]; /* }}} */
+    ];
 
     canvas: any;
     show_live_games: boolean;
@@ -120,7 +125,7 @@ export class SeekGraph extends EventEmitter {
     height;
 
 
-    constructor(config: SeekGraphConfig) { /* {{{ */
+    constructor(config: SeekGraphConfig) {
         super();
 
         this.canvas = $(config.canvas);
@@ -142,29 +147,38 @@ export class SeekGraph extends EventEmitter {
 
         $(document).on("touchend", this.onTouchEnd);
         $(document).on("touchstart touchmove", this.onTouchStartMove);
-    } /* }}} */
+    }
 
-    onDisconnect = () => {{{
-    }}}
-    onConnect = () => {{{
+    userRank() {
+        let user = data.get('user');
+        if (!user || user.anonymous) {
+            return 18;
+        }
+        return bounded_rank(user);
+    }
+    onDisconnect = () => {
+    }
+    onConnect = () => {
         this.connected = true;
         this.socket.send("seek_graph/connect", {"channel": "global"});
         if (this.show_live_games) {
             this.connectToLiveGameList();
         }
-    }}}
-    onSeekgraphGlobal = (lst) => {{{
+    }
+    onSeekgraphGlobal = (lst) => {
         for (let i = 0; i < lst.length; ++i) {
             let e = lst[i];
             if ("game_started" in e) {
                 //console.log(e);
             }
             else if ("delete" in e) {
-                let uid = this.challenges[e.challenge_id].system_message_id;
-                delete this.challenges[e.challenge_id];
-                if (uid) {
-                    //console.log("#line-" + (uid.replace(".", "\\.")));
-                    $("#line-" + (uid.replace(".", "\\."))).find("button").remove();
+                if (e.challenge_id in this.challenges) {
+                    let uid = this.challenges[e.challenge_id].system_message_id;
+                    delete this.challenges[e.challenge_id];
+                    if (uid) {
+                        //console.log("#line-" + (uid.replace(".", "\\.")));
+                        $("#line-" + (uid.replace(".", "\\."))).find("button").remove();
+                    }
                 }
             } else {
                 e.user_challenge = false;
@@ -175,18 +189,18 @@ export class SeekGraph extends EventEmitter {
                     e.eligible = false;
                     e.user_challenge = true;
                     e.ineligible_reason = _("This is your challenge");
-                } else if (e.ranked && Math.abs(data.get("user").ranking - e.rank) > 9) {
+                } else if (e.ranked && Math.abs(this.userRank() - e.rank) > 9) {
                     e.eligible = false;
                     e.ineligible_reason = _("This is a ranked game and the rank difference is more than 9");
-                } else if (e.min_rank <= data.get("user").ranking && e.max_rank >= data.get("user").ranking) {
+                } else if (e.min_rank <= this.userRank() && e.max_rank >= this.userRank()) {
                     e.eligible = true;
                 } else {
                     e.eligible = false;
 
-                    if (e.min_rank > data.get("user").ranking) {
+                    if (e.min_rank > this.userRank()) {
                         e.ineligible_reason = interpolate(_("min. rank: %s"), [rankString(e.min_rank)]);
                     }
-                    else if (e.max_rank < data.get("user").ranking) {
+                    else if (e.max_rank < this.userRank()) {
                         e.ineligible_reason = interpolate(_("max. rank: %s"), [rankString(e.max_rank)]);
                     }
                 }
@@ -203,20 +217,20 @@ export class SeekGraph extends EventEmitter {
         }
         this.redraw();
         this.emit("challenges", this.challenges);
-    }}}
-    onTouchEnd = (ev) => {{{
+    }
+    onTouchEnd = (ev) => {
         if (ev.target === this.canvas[0]) {
             this.onPointerDown(ev);
         }
-    }}}
-    onTouchStartMove = (ev) => {{{
+    }
+    onTouchStartMove = (ev) => {
         if (ev.target === this.canvas[0]) {
             this.onPointerMove(ev);
             ev.preventDefault();
             return false;
         }
-    }}}
-    onPointerMove = (ev) => {{{
+    }
+    onPointerMove = (ev) => {
         let new_list = this.getHits(ev);
         new_list.sort(list_hit_sorter);
         if (!lists_are_equal(new_list, this.list_hits)) {
@@ -228,8 +242,8 @@ export class SeekGraph extends EventEmitter {
         } else {
             this.closeChallengeList(ev);
         }
-    }}}
-    onPointerDown = (ev) => {{{
+    }
+    onPointerDown = (ev) => {
         let new_list = this.getHits(ev);
         new_list.sort(list_hit_sorter);
         if (!lists_are_equal(new_list, this.list_hits)) {
@@ -253,17 +267,17 @@ export class SeekGraph extends EventEmitter {
             this.list_locked = false;
             this.closeChallengeList();
         }
-    }}}
-    onPointerOut = (ev) => {{{
+    }
+    onPointerOut = (ev) => {
         if (!this.list_locked) {
             this.closeChallengeList();
         }
-    }}}
+    }
 
-    connectToLiveGameList() {{{
+    connectToLiveGameList() {
         this.socket.send("gamelist/subscribe", {"gamelist": "gamelist/global"});
-    }}}
-    setShowLiveGames(tf) {{{
+    }
+    setShowLiveGames(tf) {
         let changed = (tf !== this.show_live_games);
         this.show_live_games = tf;
         if (changed) {
@@ -274,8 +288,8 @@ export class SeekGraph extends EventEmitter {
             }
             this.redraw();
         }
-    }}}
-    destroy() {{{
+    }
+    destroy() {
         this.list_locked = false;
         this.closeChallengeList();
         this.setShowLiveGames(false);
@@ -289,11 +303,15 @@ export class SeekGraph extends EventEmitter {
 
         $(document).off("touchend", this.onTouchEnd);
         $(document).off("touchstart touchmove", this.onTouchStartMove);
-    }}}
+    }
 
-    getHits(ev) {{{
+    getHits(ev) {
         let pos = getRelativeEventPosition(ev);
         let ret = [];
+
+        if (!pos) {
+            return ret;
+        }
 
         for (let id in this.challenges) {
             let C = this.challenges[id];
@@ -312,8 +330,8 @@ export class SeekGraph extends EventEmitter {
         }
 
         return ret;
-    }}}
-    redraw() {{{
+    }
+    redraw() {
         let ctx = this.canvas[0].getContext("2d");
         let w = this.canvas.width();
         let h = this.canvas.height();
@@ -442,8 +460,8 @@ export class SeekGraph extends EventEmitter {
         }
 
         //console.log("Redrawing seekgraph");
-    }}}
-    resize(w, h) {{{
+    }
+    resize(w, h) {
         this.width = w;
         this.height = h;
 
@@ -459,8 +477,8 @@ export class SeekGraph extends EventEmitter {
         this.canvas.attr("width", w).attr("height", h);
 
         this.redraw();
-    }}}
-    drawAxes() {{{
+    }
+    drawAxes() {
         let ctx = this.canvas[0].getContext("2d");
         let w = this.canvas.width();
         let h = this.canvas.height();
@@ -496,7 +514,7 @@ export class SeekGraph extends EventEmitter {
 
         /* player rank line */
         if (!data.get("user").anonymous) {
-            let rank_ratio = (Math.min(MAX_RATIO, (data.get("user").ranking + 1) / 40));
+            let rank_ratio = (Math.min(MAX_RATIO, (this.userRank() + 1) / 40));
             let cy = Math.round(h - (padding + ((h - padding) * rank_ratio)));
             ctx.beginPath();
             ctx.strokeStyle = "#ccccff";
@@ -540,7 +558,7 @@ export class SeekGraph extends EventEmitter {
             let metrics = ctx.measureText(word);
             ctx.fillText(word, padding + (blitz_line - metrics.width) / 2, h - 2);
 
-            word = _("Live");
+            word = _("Normal");
             metrics = ctx.measureText(word);
             ctx.fillText(word, padding + blitz_line + ((live_line - blitz_line) - metrics.width) / 2, h - 2);
 
@@ -550,9 +568,9 @@ export class SeekGraph extends EventEmitter {
         } catch (e) {
         }
         ctx.restore();
-    }}}
+    }
 
-    moveChallengeList(ev) {{{
+    moveChallengeList(ev) {
         this.popupChallengeList(ev);
         if (this.list_locked) { return; }
 
@@ -582,8 +600,8 @@ export class SeekGraph extends EventEmitter {
         pos.y = Math.min(pos.y, win_bottom + list_height);
 
         this.list.css({"left": pos.x, "top": pos.y});
-    }}}
-    popupChallengeList(ev) {{{
+    }
+    popupChallengeList(ev) {
         if (this.list_open) { return; }
         this.list_open = true;
 
@@ -654,7 +672,7 @@ export class SeekGraph extends EventEmitter {
             else if (C.user_challenge) {
                 e.append($("<i>").addClass("fa fa-trash-o").attr("title", _("Remove challenge")).click((ev) => {
                     //console.log("Remove");
-                    del("challenges/" + C.challenge_id)
+                    del("challenges/%%", C.challenge_id)
                     .then((ev) => e.html(_("Challenge removed")))
                     .catch((response) => swal(_("Error removing challenge")));
                 }));
@@ -664,11 +682,18 @@ export class SeekGraph extends EventEmitter {
             }
 
             if (C.live_game) {
-                e.append(makePlayerLink(["name", "rank", "nolink"], {"user_id": 0, "ranking": C.black_rank, "username": C.black_username}));
+                let f = $("<span>");
+                e.append(f);
+                ReactDOM.render((<Player user={{ "user_id": 0, "ranking": C.black_rank, "username": C.black_username }} rank nolink />), f[0]);
                 e.append($("<span>").text(" " + _("vs.") + " "));
-                e.append(makePlayerLink(["name", "rank", "nolink"], {"user_id": 0, "ranking": C.white_rank, "username": C.white_username}));
+                f = $("<span>");
+                e.append(f);
+                ReactDOM.render((<Player user={{ "user_id": 0, "ranking": C.white_rank, "username": C.white_username }} rank nolink />), f[0]);
             } else {
-                e.append(makePlayerLink(["name", "rank"], {"user_id": C.user_id, "ranking": C.rank, "username": C.username}));
+                let f = $("<span>");
+                e.append(f);
+                let U = player_cache.lookup(C.user_id) || {"user_id": C.user_id, "ranking": C.rank, "username": C.username};
+                ReactDOM.render((<Player user={U} rank disableCacheUpdate />), f[0]);
 
                 let details_html = ", " +
                     (C.ranked ? _("Ranked") : _("Unranked"))
@@ -701,24 +726,28 @@ export class SeekGraph extends EventEmitter {
                     }
                 }
 
+                if (C.time_control_parameters.pause_on_weekends) {
+                    details_html += ", " + _("pause on weekends");
+                }
+
                 if (C.name.length > 3) {
                     details_html += ", \"" + ($("<div>").text(C.name).html()) + "\"";
                 }
 
 
                 if (!data.get("user").anonymous) {
-                    if (C.min_rank > data.get("user").ranking) {
+                    if (C.min_rank > this.userRank()) {
                         details_html += ", <span class='cause'>" + interpolate(_("min. rank: %s"), [rankString(C.min_rank)]) + "</span>";
                     }
-                    else if (C.max_rank < data.get("user").ranking) {
+                    else if (C.max_rank < this.userRank()) {
                         details_html += ", <span class='cause'>" + interpolate(_("max. rank: %s"), [rankString(C.max_rank)]) + "</span>";
                     }
-                    else if (C.ranked && Math.abs(data.get("user").ranking - C.rank) > 9) {
+                    else if (C.ranked && Math.abs(this.userRank() - C.rank) > 9) {
                         details_html += ", <span class='cause'>" + _("rank difference more than 9") + "</span>";
                     }
                 }
 
-                //console.log(C.ranked, Math.abs(data.get('user').ranking - C.rank));
+                //console.log(C.ranked, Math.abs(this.userRank() - C.rank));
                 e.append($("<span>").addClass("details").html(details_html));
             }
 
@@ -727,8 +756,8 @@ export class SeekGraph extends EventEmitter {
 
         $(document.body).append(list);
         this.moveChallengeList(ev);
-    }}}
-    closeChallengeList(ev?) {{{
+    }
+    closeChallengeList(ev?) {
         if (this.modal) {
             removeModal(this.modal);
         }
@@ -739,11 +768,11 @@ export class SeekGraph extends EventEmitter {
 
         this.list_open = false;
         this.list.remove();
-    }}}
+    }
 }
 
 
-/* Modal stuff {{{ */
+/* Modal stuff  */
 function createModal(close_callback, priority) {
     let modal = null;
     function onClose() {
@@ -798,7 +827,3 @@ $(document).on('keydown', function(event) {
     return true;
 });
 */
-
-/* }}} */
-
-

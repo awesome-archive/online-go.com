@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2012-2017  Online-Go.com
+ * Copyright (C) 2012-2020  Online-Go.com
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU Affero General Public License as
@@ -19,9 +19,11 @@ import * as React from "react";
 import {_, pgettext, interpolate} from "translate";
 import {errorAlerter} from "misc";
 import online_status from "online_status";
-import data from "data";
+import * as data from "data";
+import * as preferences from "preferences";
 import {post, get, abort_requests_in_flight} from "requests";
 import {Player} from "Player";
+import cached from 'cached';
 
 
 interface FriendListProperties {
@@ -35,28 +37,29 @@ export class FriendList extends React.PureComponent<{}, any> {
         super(props);
         this.state = {
             friends: [],
-            resolved: false
+            show_offline_friends: preferences.get("show-offline-friends"),
         };
     }
+    friends_listener:any;
 
     updateFriends = (friends) => {
         this.setState({
             friends: this.sortFriends(friends),
-            resolved: true
         });
     }
 
-    componentDidMount() {{{
-        data.watch("friends", this.updateFriends); /* this is managed by our FriendIndicator */
+    componentDidMount() {
+        data.watch(cached.friends, this.updateFriends); /* this is managed by our FriendIndicator */
         online_status.event_emitter.on("users-online-updated", this.resortFriends);
-    }}}
-    componentWillUnmount() {{{
+    }
+    componentWillUnmount() {
+        data.unwatch(cached.friends, this.updateFriends);
         online_status.event_emitter.off("users-online-updated", this.resortFriends);
-    }}}
+    }
     resortFriends = () => {
         this.setState({"friends": this.sortFriends(this.state.friends)});
     }
-    sortFriends(lst) {{{
+    sortFriends(lst) {
         let ret = [].concat(lst);
         ret.sort((a, b) => {
             let a_online = online_status.is_player_online(a.id);
@@ -70,17 +73,27 @@ export class FriendList extends React.PureComponent<{}, any> {
             return a.username.localeCompare(b.username);
         });
         return ret;
-    }}}
+    }
+    setShowOfflineFriends = (ev) => {
+        preferences.set("show-offline-friends", ev.target.checked),
+        this.setState({show_offline_friends: preferences.get("show-offline-friends")});
+        ev.stopPropagation();
+    }
+    clickShowOfflineFriends = (ev) => {
+        ev.stopPropagation();
+    }
+    eat = (ev) => {
+        ev.stopPropagation();
+    }
     render() {
-        if (!this.state.resolved) {
-            return null;
-        }
-
         return (
             <div className="FriendList">
-                {this.state.friends.map((friend) => (
-                    <div key={friend.id} >
-                        <Player user={friend} online rank />
+                <div className="show-offline">
+                    <input id="show-offline-friends" type="checkbox" checked={this.state.show_offline_friends} onClick={this.clickShowOfflineFriends} onChange={this.setShowOfflineFriends} /> <label onClick={this.eat} htmlFor="show-offline-friends">{_("Show offline")}</label>
+                </div>
+                {this.state.friends.map((friend) => (online_status.is_player_online(friend.id) || this.state.show_offline_friends) && (
+                    <div className="friend-entry" key={friend.id} >
+                        <Player user={friend} online rank noextracontrols />
                     </div>
                 ))}
                 {(this.state.friends.length === 0 || null) &&

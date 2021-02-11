@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2012-2017  Online-Go.com
+ * Copyright (C) 2012-2020  Online-Go.com
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU Affero General Public License as
@@ -18,12 +18,11 @@
 
 import * as React from "react";
 import {_, pgettext, interpolate} from "translate";
-import {Link} from "react-router";
+import {Link} from "react-router-dom";
 import {post, get} from "requests";
 import {LadderComponent} from "LadderComponent";
-import {Card} from "components";
+import {Card} from "material";
 import {errorAlerter} from "misc";
-import {AdUnit} from "AdUnit";
 
 /* Ensure these get picked up in our translations */
 _("Site 19x19 Ladder");
@@ -41,7 +40,8 @@ export class LadderList extends React.PureComponent<LadderListProperties, any> {
         };
     }
 
-    componentWillMount() {
+    UNSAFE_componentWillMount() {
+        window.document.title = ("Ladders");
         this.resolve();
     }
 
@@ -54,7 +54,7 @@ export class LadderList extends React.PureComponent<LadderListProperties, any> {
     }
 
     join(ladder_id: number) {
-        post(`ladders/${ladder_id}/players`, {})
+        post("ladders/%%/players", ladder_id, {})
         .then(() => {
             this.resolve();
         })
@@ -63,8 +63,17 @@ export class LadderList extends React.PureComponent<LadderListProperties, any> {
 
     render() {
         return (
-        <div>
-            <AdUnit unit="cdm-zone-01" nag/>
+        <div className="page-width">
+            <div className="page-nav">
+                <h2 style={{marginLeft: '1rem'}}><i className="fa fa-list-ol"></i> {_("Ladders")}</h2>
+                <div>
+                    {this.state.ladders.map((ladder, idx) => (
+                    <Link key={idx} to={`/ladder/${ladder.id}`}>
+                        {_(ladder.board_size + 'x' + ladder.board_size)}
+                    </Link>
+                ))}
+                </div>
+            </div>
             <div className="LadderList">
                 {this.state.ladders.map((ladder, idx) => (
                     <Card key={idx}>

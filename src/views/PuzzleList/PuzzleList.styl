@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2012-2017  Online-Go.com
+ * Copyright (C) 2012-2020  Online-Go.com
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU Affero General Public License as
@@ -19,14 +19,23 @@
 .PuzzleList {
     // here
 
-    .name {
-        font-weight: bold;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    align-items: center;
+    padding: 0 1rem;
+
+
+    .puzzle-list-container {
+        width: 100%;
+
+        td.icon{
+            width: 70px;
+        }
     }
 
-    .create-a-new-puzzle-link-container {
-        padding-top: 1rem;
+    td.name {
         font-weight: bold;
-        text-align: center;
     }
 
     .MiniGoban {
@@ -38,6 +47,11 @@
         text-align: center;
     }
     .rating-count {
-        font-size: font-size-smaller;
+        color: #919191;
+    }
+    .rating {
+        .fa-star, .fa-star-half-o{
+            color: #FFB74D;
+        }
     }
 }

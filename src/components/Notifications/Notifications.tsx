@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2012-2017  Online-Go.com
+ * Copyright (C) 2012-2020  Online-Go.com
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU Affero General Public License as
@@ -17,20 +17,30 @@
 
 import * as React from "react";
 import {comm_socket} from "sockets";
-import data from "data";
-import preferences from "preferences";
+import * as data from "data";
+import * as preferences from "preferences";
 import {_, interpolate, pgettext} from "translate";
 import {ogs_has_focus, shouldOpenNewTab, dup, deepEqual} from "misc";
 import {isLiveGame} from "TimeControl";
 import {post, del} from "requests";
-import {browserHistory} from "react-router";
+import {browserHistory} from "ogsHistory";
 import {challenge_text_description} from "ChallengeModal";
 import {Player} from "Player";
 import {FabX, FabCheck} from "material";
-import {EventEmitter} from "eventemitter3";
-
+import {TypedEventEmitter} from "TypedEventEmitter";
+import {toast} from 'toast';
+import {sfx} from 'sfx';
+import { Goban } from "goban";
 
 declare let Notification: any;
+
+interface Events {
+    "turn-count": number;
+    "total-count": number;
+    "notification": any;
+    "notification-list-updated": never;
+    "notification-count": number;
+}
 
 // null or id of game that we're current viewing
 function getCurrentGameId() {
@@ -41,7 +51,7 @@ function getCurrentGameId() {
     return null;
 }
 
-function formatTime(seconds) { /* {{{ */
+function formatTime(seconds) {
     let days = Math.floor(seconds / 86400); seconds -= days * 86400;
     let hours = Math.floor(seconds / 3600); seconds -= hours * 3600;
     let minutes = Math.floor(seconds / 60); seconds -= minutes * 60;
@@ -72,31 +82,10 @@ function formatTime(seconds) { /* {{{ */
         return minutes + ":" + (seconds < 10 ? "0" : "") + seconds;
     }
     return _("no time left");
-} /* }}} */
-
-
+}
 
 let boot_time = Date.now();
 let already_asked_for_permission = false;
-
-function notificationPermissionRequest() {
-    if (already_asked_for_permission) { return; }
-    already_asked_for_permission = true;
-    try {
-        //NOTE: Store this perhaps and don't try to emit a notification if we don't have permission
-        Notification.requestPermission((perm) => {
-            if (perm === "granted") {
-                console.log("granted notification permission");
-            } else {
-                console.log("permission not granted for notifications");
-            }
-        });
-    } catch (e) {
-        console.log("Error requesting notification permissions: ", e);
-    }
-}
-console.log("TODO: Need to ask for notification permissions");
-
 let notification_timeout = null;
 let sent = {};
 $(window).on("storage", (event) => {
@@ -111,8 +100,39 @@ $(window).on("storage", (event) => {
     }
 });
 
-export function emitNotification(title, body, cb?) {{{
+export function emitNotification(title, body, cb?) {
     try {
+        if (!preferences.get('desktop-notifications')) {
+            return;
+        }
+
+        if (!preferences.get("asked-to-enable-desktop-notifications") && Notification.permission === "default") {
+            preferences.set("asked-to-enable-desktop-notifications", true);
+            let t = toast(
+                <div>
+                    {_("Hi! While you're using OGS, you can enable Desktop Notifications to be notified when your name is mentioned in chat or you receive a game challenge. Would you like to enable them? (You can always change your answer under settings)")}
+                    <div>
+                        <FabCheck onClick={() => {
+                            try {
+                                Notification.requestPermission().then((perm) => {
+                                    emitNotification(title, body, cb);
+                                }).catch((err) => console.error(err));
+                            } catch (e) {
+                                /* deprecated usage, but only way supported on safari currently */
+                                Notification.requestPermission((perm) => {
+                                    emitNotification(title, body, cb);
+                                });
+                            }
+                            t.close();
+                        }}/>
+                        <FabX onClick={() => t.close()}/>
+                    </div>
+                </div>
+            );
+
+            return;
+        }
+
         if (ogs_has_focus()) {
             //console.log('Not emitting notification, ogs has focus');
             return;
@@ -147,18 +167,32 @@ export function emitNotification(title, body, cb?) {{{
                     console.error(e);
                 }
 
-                let notification = new Notification(title, {body: body,
-                    icon: "https://cdn.online-go.com/favicon.ico",
-                    dir: "auto",
-                    lang: "",
-                    tag: "ogs"});
-                if (cb) {
-                    notification.onclick = cb;
-                }
+                try {
+                    let notification = new Notification(title,
+                        {
+                            body: body,
+                            icon: "https://cdn.online-go.com/favicon.ico",
+                            dir: "auto",
+                            lang: "",
+                            tag: "ogs"
+                        }
+                    );
 
-                setTimeout(() => {
-                    notification.close();
-                }, preferences.get("notification-timeout") * 1000);
+                    if (cb) {
+                        notification.onclick = cb;
+                    }
+
+                    setTimeout(() => {
+                        try {
+                            /* this isn't supported on MS Edge yet */
+                            notification.close();
+                        } catch (e) {
+                            console.warn(e);
+                        }
+                    }, preferences.get("notification-timeout") * 1000);
+                } catch (e) {
+                    console.info(e);
+                }
             }, delay);
         } else {
             //console.log("Ignoring notificaiton sent within the first few seconds of page load", title, body);
@@ -166,10 +200,10 @@ export function emitNotification(title, body, cb?) {{{
     } catch (e) {
         console.log("Error emitting notification: ", e);
     }
-}}}
-function silenceNotificationsFor5Seconds() {{{
+}
+function silenceNotificationsFor5Seconds() {
     boot_time = Date.now();
-}}}
+}
 
 
 class NotificationManager {
@@ -178,22 +212,24 @@ class NotificationManager {
     ordered_notifications;
     unread_notification_count;
     boards_to_move_on;
+    active_boards;
     turn_offset;
     auth;
-    event_emitter: EventEmitter;
+    event_emitter: TypedEventEmitter<Events>;
 
-    constructor() {{{
+    constructor() {
         window["notification_manager"] = this;
-        this.event_emitter = new EventEmitter();
+        this.event_emitter = new TypedEventEmitter<Events>();
 
         this.notifications = {};
         this.ordered_notifications = [];
 
         this.boards_to_move_on = {};
+        this.active_boards = {};
         this.turn_offset = 0;
         browserHistory.listen(this.onNavigate);
-    }}}
-    setUser(user) {{{
+    }
+    setUser(user) {
         if (this.user && (user.id === this.user.id)) {
             return;
         }
@@ -203,21 +239,32 @@ class NotificationManager {
         this.user = user;
         this.auth = data.get("config.notification_auth");
         this.connect();
-    }}}
-    advanceToNextBoard(ev?) {{{
+    }
+
+    advanceToNextBoard(ev?) {
         let game_id = getCurrentGameId() || 0;
         let board_ids = [];
         //notificationPermissionRequest();
         for (let k in this.boards_to_move_on) {
             board_ids.push(parseInt(this.boards_to_move_on[k].id));
         }
-        board_ids.sort((a, b) => { return a - b; });
+
+        if (board_ids.length === 0) {
+            for (let k in this.active_boards) {
+                board_ids.push(parseInt(this.active_boards[k].id));
+            }
+        }
 
         if (board_ids.length === 0) {
             return;
         }
 
+
+        board_ids.sort((a, b) => { return a - b; });
+
+
         let idx = -1;
+
         for (let i = 0; i < board_ids.length; ++i) {
             if (game_id === board_ids[i]) {
                 idx = i;
@@ -230,7 +277,10 @@ class NotificationManager {
         }
 
         idx = (idx + 1 + this.turn_offset) % board_ids.length;
-        if (ev && shouldOpenNewTab(ev)) {
+
+        // open a new tab if the user asked for it, or if we must protect against disconnection from a live game
+        // (there's no point in opening a new tab if they only have one game, because it will be this same game)
+        if (ev && shouldOpenNewTab(ev) || (this.lookingAtOurLiveGame() && board_ids.length > 1)) {
             ++this.turn_offset;
             window.open("/game/" + board_ids[idx], "_blank");
         } else {
@@ -239,16 +289,26 @@ class NotificationManager {
                 browserHistory.push("/game/" + board_ids[idx]);
             }
         }
-    }}}
-    deleteNotification(notification, dont_rebuild?: boolean) {{{
+    }
+
+    lookingAtOurLiveGame = (): boolean => {
+        // Is the current page looking at a game we are live playing in...
+        const goban = window["global_goban"] as Goban;
+        if (!goban) {
+            return false;
+        }
+        const player_id = goban.config.player_id;
+        return (goban && goban.engine.phase !== "finished" && isLiveGame(goban.engine.time_control) && (player_id === goban.config.black_player_id || player_id === goban.config.white_player_id));
+    }
+
+    deleteNotification(notification, dont_rebuild?: boolean) {
         comm_socket.send("notification/delete", {"player_id": this.user.id, "auth": this.auth, "notification_id": notification.id});
         delete this.notifications[notification.id];
         if (!dont_rebuild) {
             this.rebuildNotificationList();
         }
-    }}}
-    clearAllNonActionableNotifications() {{{
-        console.log("Should be clearing notifs");
+    }
+    clearAllNonActionableNotifications() {
         for (let id in this.notifications) {
             let notification = this.notifications[id];
             switch (notification.type) {
@@ -264,8 +324,8 @@ class NotificationManager {
             comm_socket.send("notification/delete", {"player_id": this.user.id, "auth": this.auth, "notification_id": notification.id});
         }
         this.rebuildNotificationList();
-    }}}
-    connect() {{{
+    }
+    connect() {
         comm_socket.on("connect", () => {
             comm_socket.send("notification/connect", {"player_id": this.user.id, "auth": this.auth});
         });
@@ -274,6 +334,9 @@ class NotificationManager {
         });
         comm_socket.on("active_game", (game) => {
             delete this.boards_to_move_on[game.id];
+            if (game.phase === "finished") {
+                delete this.active_boards[game.id];
+            }
 
             if (game.phase === "stone removal") {
                 if ((game.black.id === data.get("user").id && !game.black.accepted)
@@ -288,11 +351,15 @@ class NotificationManager {
                 }
             }
 
+            if (game.phase !== "finished") {
+                this.active_boards[game.id] = game;
+            }
+
             if (this.boards_to_move_on[game.id]) {
                 let current_game_id = getCurrentGameId();
                 if ((current_game_id !== game.id || !document.hasFocus())) {
                     if (game.avg_move_time > 3600) { // don't notify for realtime games ever
-                        emitNotification("Your Turn", "It's your turn in game " + game.id,
+                        emitNotification(_("Your Turn"), interpolate("It's your turn in game {{game_id}}", {'game_id': game.id}),
                             () => {
                                 if (window.location.pathname !== "/game/" + game.id) {
                                     browserHistory.push("/game/" + game.id);
@@ -304,6 +371,7 @@ class NotificationManager {
             }
 
             this.event_emitter.emit("turn-count", Object.keys(this.boards_to_move_on).length);
+            this.event_emitter.emit("total-count", Object.keys(this.active_boards).length);
         });
 
         comm_socket.on("notification", (notification) => {
@@ -322,23 +390,26 @@ class NotificationManager {
             }
 
             if (notification.type === "challenge") {
-                emitNotification("Challenge Received", "You have received a challenge from " + notification.user.username);
+                emitNotification(_("Challenge Received"), interpolate("You have received a challenge from {{username}}", {'username':  notification.user.username}));
+                if ((Date.now()) - boot_time > 5000) {
+                    sfx.play("challenge_received");
+                }
             }
 
             if (notification.type === "gameDeclined") {
-                emitNotification("Game Declined", "Your game request has been declined");
+                emitNotification(_("Game Declined"), _("Your game request has been declined"));
             }
 
             if (notification.type === "friendRequest") {
-                emitNotification("Friend Request", "You have received a new friend request");
+                emitNotification(_("Friend Request"), _("You have received a new friend request"));
             }
 
             if (notification.type === "friendAccepted") {
-                emitNotification("Friend Request Accepted", "Your friend request has been accepted");
+                emitNotification(_("Friend Request Accepted"), _("Your friend request has been accepted"));
             }
 
             if (notification.type === "friendDeclined") {
-                emitNotification("Friend Request Declined", "Your friend request has been declined");
+                emitNotification(_("Friend Request Declined"), _("Your friend request has been declined"));
             }
 
             if (notification.type === "gameStarted" ||
@@ -354,20 +425,24 @@ class NotificationManager {
                         let title = "";
                         let body = "";
                         if (notification.type === "gameStarted") {
-                            title = "Game Started";
-                            body = "Your game has started";
+                            title = _("Game Started");
+                            body = _("Your game has started");
+                            if ((Date.now()) - boot_time > 5000) {
+                                sfx.play("game_started");
+                                //sfx.play("setup-bowl");
+                            }
                         } else if (notification.type === "gameEnded") {
-                            title = "Game Ended";
-                            body = "Your game has ended";
+                            title = _("Game Ended");
+                            body = _("Your game has ended");
                         } else if (notification.type === "gameEnteredStoneRemoval") {
-                            title = "Game Entered Stone Removal";
-                            body = "Your game has entered Stone Removal Phase";
+                            title = _("Game Entered Stone Removal");
+                            body = _("Your game has entered Stone Removal Phase");
                         } else if (notification.type === "gameResumedFromStoneRemoval") {
-                            title = "Game Resume from Stone Removal";
-                            body = "Your opponent has resumed from the stone removal phase";
+                            title = _("Game Resume from Stone Removal");
+                            body = _("Your opponent has resumed from the stone removal phase");
                         } else {
-                            title = "Notification from Online Go";
-                            body = "You have received a new notification from OGS";
+                            title = _("Notification from Online Go");
+                            body = _("You have received a new notification from OGS");
                         }
                         emitNotification(title, body);
                     }
@@ -381,8 +456,8 @@ class NotificationManager {
         });
 
         return comm_socket;
-    }}}
-    onNavigate = (location) => {{{
+    }
+    onNavigate = (location) => {
         let current_game_id = getCurrentGameId();
         if (current_game_id) {
             let found = false;
@@ -397,9 +472,8 @@ class NotificationManager {
                 this.rebuildNotificationList();
             }
         }
-    }}}
-    rebuildNotificationList() {{{
-        /* Notification Count */
+    }
+    rebuildNotificationList() {
         this.ordered_notifications = [];
 
         this.unread_notification_count = 0;
@@ -414,24 +488,35 @@ class NotificationManager {
 
         this.event_emitter.emit("notification-count", this.unread_notification_count);
         this.event_emitter.emit("notification-list-updated");
-    }}}
+    }
+    anyYourMove() {
+        if (Object.keys(this.boards_to_move_on).length === 0) {
+            return false;
+        }
+        return true;
+    }
 }
 
 
 
 export let notification_manager: NotificationManager = new NotificationManager();
 
-export class TurnIndicator extends React.Component<{}, any> { /* {{{ */
+export class TurnIndicator extends React.Component<{}, any> {
     constructor(props) {
         super(props);
         this.state = {
-            count: Object.keys(notification_manager.boards_to_move_on).length
+            count: Object.keys(notification_manager.boards_to_move_on).length,
+            total: Object.keys(notification_manager.active_boards).length,
         };
 
         this.advanceToNextBoard = this.advanceToNextBoard.bind(this);
 
-        notification_manager.event_emitter.on("turn-count", (ct, next_board) => {
-            this.setState({count: ct, next_board: next_board});
+        notification_manager.event_emitter.on("turn-count", (ct) => {
+            this.setState({count: ct});
+        });
+
+        notification_manager.event_emitter.on("total-count", (tt) => {
+            this.setState({total: tt});
         });
     }
 
@@ -442,13 +527,13 @@ export class TurnIndicator extends React.Component<{}, any> { /* {{{ */
     render() {
         return (
             <span className="turn-indicator" onClick={this.advanceToNextBoard}>
-                <span className={this.state.count > 0 ? "active count" : "count"}><span>{this.state.count}</span></span>
+                <span className={this.state.total > 0 ? (this.state.count > 0 ? "active count" : "inactive count") : "count"}><span>{this.state.count}</span></span>
             </span>
        );
     }
-}; /* }}} */
+}
 
-export class NotificationIndicator extends React.Component<{}, any> { /* {{{ */
+export class NotificationIndicator extends React.Component<{}, any> {
     constructor(props) {
         super(props);
         this.state = {
@@ -476,9 +561,9 @@ export class NotificationIndicator extends React.Component<{}, any> { /* {{{ */
             </span>
         );
     }
-} /* }}} */
+}
 
-export class NotificationList extends React.Component<{}, any> { /* {{{ */
+export class NotificationList extends React.Component<{}, any> {
     constructor(props) {
         super(props);
         this.state = {
@@ -506,7 +591,6 @@ export class NotificationList extends React.Component<{}, any> { /* {{{ */
     }
 
     clearNotifications() {
-        console.log("Clear notifications");
         notification_manager.clearAllNonActionableNotifications();
     }
 
@@ -529,9 +613,9 @@ export class NotificationList extends React.Component<{}, any> { /* {{{ */
             </div>
         );
     }
-} /* }}} */
+}
 
-class NotificationEntry extends React.Component<{notification}, any> { /* {{{ */
+class NotificationEntry extends React.Component<{notification}, any> {
     constructor(props) {
         super(props);
         this.state = {
@@ -540,6 +624,10 @@ class NotificationEntry extends React.Component<{notification}, any> { /* {{{ */
 
         this.del = this.del.bind(this);
         this.onError = this.onError.bind(this);
+
+        if (this.props.notification.type === 'gameOfferRejected') {
+            setTimeout(this.del, 1);
+        }
     }
 
     shouldComponentUpdate(nextProps, nextState) {
@@ -584,6 +672,9 @@ class NotificationEntry extends React.Component<{notification}, any> { /* {{{ */
             case "timecop":
             case "gameEnteredStoneRemoval":
             case "gameResumedFromStoneRemoval":
+                if (notification.game_id === undefined) {
+                    console.error("Notification Error: game_id not found", notification);
+                }
                 return `/game/${notification.game_id}`;
 
             case "friendAccepted":
@@ -603,6 +694,9 @@ class NotificationEntry extends React.Component<{notification}, any> { /* {{{ */
             case "tournamentStarted":
             case "tournamentEnded":
                 return `/tournament/${notification.tournamentid}`;
+
+            case "aiReviewDone":
+                return `/game/${notification.game_id}`;
         }
 
         return null;
@@ -644,13 +738,13 @@ class NotificationEntry extends React.Component<{notification}, any> { /* {{{ */
                         <div className="buttons">
                             <FabX onClick={() => {
                                 this.setState({message: _("Declining")});
-                                del("me/challenges/" + notification.challenge_id)
+                                del("me/challenges/%%", notification.challenge_id)
                                 .then(this.del)
                                 .catch(this.onError);
                             }}/>
                             <FabCheck onClick={() => {
                                 this.setState({message: _("Accepting")});
-                                post(`me/challenges/${notification.challenge_id}/accept`, {})
+                                post("me/challenges/%%/accept", notification.challenge_id, {})
                                 .then(() => {
                                     this.del();
                                     if (isLiveGame(notification.time_control)) {
@@ -691,7 +785,7 @@ class NotificationEntry extends React.Component<{notification}, any> { /* {{{ */
 
             case "timecop":
                 let now = (Date.now()) / 1000;
-                let left = Math.floor(notification.expiration / 1000 - now);
+                let left = Math.floor(notification.time / 1000 - now);
                 return <div>{interpolate(_("You have {{time_left}} to make your move!"), {"time_left": formatTime(left)})}</div>;
 
             case "gameEnteredStoneRemoval":
@@ -834,12 +928,15 @@ class NotificationEntry extends React.Component<{notification}, any> { /* {{{ */
             case "gameOfferRejected":
                 return null;
 
+            case "aiReviewDone":
+                return <div>{interpolate(_("The computer has finished analyzing your game: {{game_name}}"), {game_name: notification.game_name})}</div>;
+
             default:
                 console.error("Unsupported notification: ", notification.type, notification);
                 break;
         }
     }
-} /* }}} */
+}
 
 
 data.watch("config.user", (user) => notification_manager.setUser(user));

@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2012-2017  Online-Go.com
+ * Copyright (C) 2012-2020  Online-Go.com
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU Affero General Public License as
@@ -16,21 +16,20 @@
  */
 
 import * as React from "react";
-import {_, pgettext, interpolate} from "translate";
-import {post, get} from "requests";
-import {openModal, Modal} from "components";
-import {timeControlDescription} from "TimeControl";
+import {_} from "translate";
+import {openModal, Modal} from "Modal";
 import {Goban} from "goban";
 import {Player} from "Player";
-import {errorAlerter, rulesText} from "misc";
-import {handicapText} from "GameAcceptModal";
+
+interface Events {
+}
 
 interface GameLinkModalProperties {
     goban: Goban;
 }
 
 
-export class GameLinkModal extends Modal<GameLinkModalProperties, {}> {
+export class GameLinkModal extends Modal<Events, GameLinkModalProperties, {}> {
     constructor(props) {
         super(props);
     }
@@ -86,7 +85,3 @@ export class GameLinkModal extends Modal<GameLinkModalProperties, {}> {
 export function openGameLinkModal(goban): void {
     openModal(<GameLinkModal goban={goban} fastDismiss />);
 }
-
-function yesno(tf: boolean) {{{
-    return tf ? _("Yes") : _("No");
-}}}

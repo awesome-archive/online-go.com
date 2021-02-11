@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2012-2017  Online-Go.com
+ * Copyright (C) 2012-2020  Online-Go.com
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU Affero General Public License as
@@ -16,8 +16,8 @@
  */
 
 import * as React from "react";
-import data from "data";
-import {Link} from "react-router";
+import * as data from "data";
+import {Link} from "react-router-dom";
 import {_, pgettext, interpolate, cc_to_country_name} from "translate";
 import {post, get, put, del} from "requests";
 import {PaginatedTable} from "PaginatedTable";
@@ -25,7 +25,7 @@ import {Card} from "material";
 import {UIPush} from "UIPush";
 import {errorAlerter} from "misc";
 import {Player} from "Player";
-import * as Datetime from "react-datetime";
+import Datetime from "react-datetime";
 import * as moment from "moment";
 
 declare var swal;
@@ -33,36 +33,62 @@ declare var swal;
 interface AnnouncementCenterProperties {
 }
 
+const MAX_ANNOUNCEMENT_DURATION = 6 * 3600 * 1000; /* 6 hours */
+
 export class AnnouncementCenter extends React.PureComponent<AnnouncementCenterProperties, any> {
 
     constructor(props) {
         super(props);
+        let exp = new Date();
+        exp.setSeconds(exp.getSeconds() + 300);
+
         this.state = {
             announcements: [],
             type: "system",
-            expiration: null,
+            expiration_date: exp,
+            expiration: moment(exp).toISOString(),
             text: "",
             link: "",
         };
     }
 
-    componentWillMount() {
+    UNSAFE_componentWillMount() {
+        window.document.title = _("Announcement Center");
         this.refresh();
     }
 
-    setType = (ev) => {{{
+    setType = (ev) => {
         this.setState({type: ev.target.value});
-    }}}
-    setExpiration = (moment_date) => {{{
-        this.setState({expiration: moment_date._d.toISOString()});
-    }}}
-    setText = (ev) => {{{
+    }
+    setExpiration = (moment_date) => {
+
+        let message = null;
+        let announcement_duration = moment_date.toDate().getTime() - Date.now();
+        if (announcement_duration > MAX_ANNOUNCEMENT_DURATION && !data.get('user').is_superuser) {
+            message = _("Announcement durations must be 6 hours or less");
+        }
+
+        this.setState({
+            expiration_date: moment_date._d,
+            expiration: moment_date._d.toISOString(),
+            expiration_message: message
+        });
+    }
+    setText = (ev) => {
         this.setState({text: ev.target.value});
-    }}}
-    setLink = (ev) => {{{
-        this.setState({link: ev.target.value});
-    }}}
-    create = () => {{{
+    }
+    setLink = (ev) => {
+        let link  = ev.target.value.trim();
+        this.setState({
+            link: link
+        });
+    }
+    create = () => {
+        let announcement_duration = moment(this.state.expiration).toDate().getTime() - Date.now();
+        if (announcement_duration > MAX_ANNOUNCEMENT_DURATION && !data.get('user').is_superuser) {
+            return;
+        }
+
         post("announcements", {
             "type": this.state.type,
             "user_ids": "",
@@ -75,27 +101,36 @@ export class AnnouncementCenter extends React.PureComponent<AnnouncementCenterPr
         })
         .then(this.refresh)
         .catch(errorAlerter);
-    }}}
-    refresh = () => {{{
+    }
+    refresh = () => {
         get("announcements")
         .then((list) => {
+            console.log(list);
             this.setState({announcements: list});
         })
         .catch(errorAlerter);
-    }}}
-    deleteAnnouncement(announcement) {{{
-        del(`announcements/${announcement.id}`)
+    }
+    deleteAnnouncement(announcement) {
+        del("announcements/%%", announcement.id)
         .then(this.refresh)
         .catch(errorAlerter);
-    }}}
+    }
 
 
 
     render() {
         let user = data.get("user");
 
+        let can_create = (this.state.expiration && this.state.text) ;
+        let announcement_duration = moment(this.state.expiration).toDate().getTime() - Date.now();
+        if (announcement_duration > MAX_ANNOUNCEMENT_DURATION && !data.get('user').is_superuser) {
+            can_create = false;
+        }
+
+
         return (
         <div className="AnnouncementCenter container">
+            <UIPush event="refresh" channel="announcement-center" action={this.refresh}/>
             <Card>
                 <dl className="horizontal">
                     {(user.is_superuser || null) && <dt>Type</dt> }
@@ -112,7 +147,7 @@ export class AnnouncementCenter extends React.PureComponent<AnnouncementCenterPr
 
                     <dt>{_("Expiration")}</dt>
                     <dd>
-                        <Datetime onChange={this.setExpiration} />
+                        <Datetime value={this.state.expiration_date} onChange={this.setExpiration} />
                     </dd>
 
                     <dt>{_("Text")}</dt>
@@ -126,14 +161,19 @@ export class AnnouncementCenter extends React.PureComponent<AnnouncementCenterPr
                     </dd>
                     <dt></dt>
                     <dd>
-                        <button className="primary" disabled={ !(this.state.expiration && this.state.text) } onClick={this.create}>{_("Create announcement")}</button>
+                        { this.state.expiration_message &&
+                            <div className='danger'>{this.state.expiration_message} </div>
+                        }
+                        <button className="primary" disabled={ !can_create } onClick={this.create}>{_("Create announcement")}</button>
                     </dd>
                 </dl>
                 <div className="announcements">
                     {this.state.announcements.map((announcement, idx) => (
                         <div className="announcement" key={idx}>
                             <div className="cell">
-                                <button className="reject xs" onClick={this.deleteAnnouncement.bind(this, announcement)}><i className="fa fa-trash-o"/></button>
+                                {((user.is_moderator || user.id === announcement.creator.id) || null) &&
+                                    <button className="reject xs" onClick={this.deleteAnnouncement.bind(this, announcement)}><i className="fa fa-trash-o"/></button>
+                                }
                             </div>
                             <div className="cell">
                                 <Player user={announcement.creator}/>
@@ -151,6 +191,29 @@ export class AnnouncementCenter extends React.PureComponent<AnnouncementCenterPr
                     ))}
                 </div>
             </Card>
+
+            {(user.is_superuser || null) &&
+                <Card>
+                    <h3>Announcement History</h3>
+
+                    <PaginatedTable
+                        className="announcement-history"
+                        source={`announcements/history`}
+                        orderBy={["-timestamp"]}
+                        columns={[
+                            {header: "Time"      , className: "", render: (a) => moment(a.timestamp).format('YYYY-MM-DD LTS')},
+                            {header: "Duration"  , className: "", render: (a) =>
+                                moment.utc(
+                                    moment(a.expiration).diff(moment(a.timestamp))
+                                ).format('HH:mm')
+                            },
+                            {header: "Player"    , className: "", render: (a) => <Player user={a.creator} />},
+                            {header: "Message"   , className: "", render: (a) => a.text},
+                            {header: "Link"      , className: "", render: (a) => <a href={a.link}>{a.link}</a>},
+                        ]}
+                    />
+                </Card>
+            }
         </div>
         );
     }

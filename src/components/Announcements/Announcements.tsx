@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2012-2017  Online-Go.com
+ * Copyright (C) 2012-2020  Online-Go.com
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU Affero General Public License as
@@ -16,13 +16,23 @@
  */
 
 import * as React from "react";
-import {Link} from "react-router";
+import {Link} from "react-router-dom";
 import {_, pgettext, interpolate} from "translate";
 import {post, get} from "requests";
 import {UIPush} from "UIPush";
+import {TypedEventEmitter} from "TypedEventEmitter";
+import {errorLogger} from "misc";
 import * as moment from "moment";
 import ITC from "ITC";
-import data from "data";
+import * as data from "data";
+
+interface Events {
+    "announcement": any;
+    "announcement-cleared": any;
+}
+
+export let announcement_event_emitter = new TypedEventEmitter<Events>();
+export let active_announcements = {};
 
 interface AnnouncementsProperties {
 }
@@ -35,6 +45,7 @@ for (let k in cleared_announcements) {
     }
 }
 data.set("announcements.cleared", cleared_announcements);
+
 
 export class Announcements extends React.PureComponent<AnnouncementsProperties, any> {
     constructor(props) {
@@ -49,43 +60,61 @@ export class Announcements extends React.PureComponent<AnnouncementsProperties, 
         });
     }
 
-    componentWillMount() {{{
-        get("announcements")
-        .then((announcements) => {
-            for (let announcement of announcements) {
-                this.announce(announcement);
-            }
-        });
-    }}}
+    UNSAFE_componentWillMount() {
+        setTimeout(() => {
+            /* Defer this get so we can load whatever page we're on first */
+            get("announcements")
+            .then((announcements) => {
+                for (let announcement of announcements) {
+                    this.announce(announcement);
+                }
+            })
+            .catch(errorLogger);
+        }, 20);
+    }
 
-    retract = (announcement) => {{{
+    retract = (announcement) => {
         this.clearAnnouncement(announcement.id, true);
-    }}}
-    announce = (announcement) => {{{
+    }
+    announce = (announcement) => {
+        active_announcements[announcement.id] = announcement;
+
         if (announcement.id in announced) {
             return;
         }
 
+        announcement_event_emitter.emit('announcement', announcement);
+
         if (announcement.id in cleared_announcements) {
+            announcement_event_emitter.emit('announcement-cleared', announcement);
             return;
         }
 
+
         announcement.clear = this.clearAnnouncement.bind(this, announcement.id, false);
-        announced[announcement.id] = true;
+        announced[announcement.id] = announcement;
 
         if (announcement.type !== "tournament") {
             this.state.announcements.push(announcement);
             this.forceUpdate();
+
+            setTimeout(
+                () => {
+                    this.clearAnnouncement(announcement.id, true);
+                    delete active_announcements[announcement.id];
+                }, moment(announcement.expiration).toDate().getTime() - Date.now()
+            );
         } else {
             let t = moment(announcement.expiration).toDate().getTime() - Date.now();
             if (t > 0 && t < 30 * 60 * 1000) {
                 data.set("active-tournament", announcement);
             }
         }
-    }}}
+    }
 
-    clearAnnouncement(id, dont_send_clear_announcement) {{{
+    clearAnnouncement(id, dont_send_clear_announcement) {
         cleared_announcements[id] = Date.now() + 30 * 24 * 3600 * 1000;
+        announcement_event_emitter.emit('announcement-cleared', announced[id]);
         data.set("announcements.cleared", cleared_announcements);
 
         if (!dont_send_clear_announcement) {
@@ -101,7 +130,7 @@ export class Announcements extends React.PureComponent<AnnouncementsProperties, 
         }
 
         this.forceUpdate();
-    }}}
+    }
 
 
     render() {

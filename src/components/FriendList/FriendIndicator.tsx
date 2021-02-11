@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2012-2017  Online-Go.com
+ * Copyright (C) 2012-2020  Online-Go.com
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU Affero General Public License as
@@ -16,14 +16,18 @@
  */
 
 import * as React from "react";
-import {Link} from "react-router";
+import {Link} from "react-router-dom";
 import online_status from "online_status";
-import data from "data";
+import * as data from "data";
 import {get} from "requests";
 import * as moment from "moment";
 import {FriendList} from "./FriendList";
 import {UIPush} from "UIPush";
+import {KBShortcut} from "KBShortcut";
+import cached from 'cached';
 
+
+let friend_indicator_singleton:FriendIndicator;
 
 export class FriendIndicator extends React.PureComponent<{}, any> {
     update_interval = null;
@@ -37,12 +41,12 @@ export class FriendIndicator extends React.PureComponent<{}, any> {
             online_ct: 0,
             show_friend_list: false,
         };
+        friend_indicator_singleton = this;
     }
 
-    componentWillMount() {
-        data.watch("friends", this.updateFriends);
+    UNSAFE_componentWillMount() {
+        data.watch(cached.friends, this.updateFriends);
         online_status.event_emitter.on("users-online-updated", this.updateFriendCount);
-        this.refresh();
     }
 
     updateFriendCount = () => {
@@ -65,14 +69,6 @@ export class FriendIndicator extends React.PureComponent<{}, any> {
         });
     }
 
-    refresh() {
-        get("ui/friends").then((res) => {
-            data.set("friends", res.friends);
-        }).catch((err) => {
-            console.error("Error resolving friends list: ", err);
-        });
-    }
-
     updateFriends = (friends) => {
         this.friend_list = friends;
         this.updateFriendCount();
@@ -92,14 +88,22 @@ export class FriendIndicator extends React.PureComponent<{}, any> {
 
         return (
             <span className={"FriendIndicator" + (this.state.online_ct ? " online" : "")} onClick={this.toggleFriendList}>
-                <UIPush event="update-friend-list" action={this.refresh} />
                 <i className="fa fa-users"/>
                 <span className="count">{this.state.online_ct}</span>
                 {(this.state.show_friend_list || null) &&
-                    <FriendList />
+                    <div>
+                        <KBShortcut shortcut="escape" action={this.toggleFriendList}/>
+                        <div className='FriendListBackdrop' onClick={this.toggleFriendList} />
+                        <FriendList />
+                    </div>
                 }
             </span>
         );
     }
-};
+}
 
+export function close_friend_list() {
+    if (friend_indicator_singleton && friend_indicator_singleton.state.show_friend_list) {
+        friend_indicator_singleton.setState({show_friend_list: false});
+    }
+}

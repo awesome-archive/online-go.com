@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2012-2017  Online-Go.com
+ * Copyright (C) 2012-2020  Online-Go.com
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU Affero General Public License as
@@ -16,15 +16,19 @@
  */
 
 import * as React from "react";
+import {Link} from "react-router-dom";
 import {_, pgettext, interpolate} from "translate";
 import {post, get} from "requests";
-import {browserHistory} from "react-router";
-import {OGSComponent, AdUnit, PaginatedTable, SearchInput} from "components";
+import {browserHistory} from "ogsHistory";
+import {PaginatedTable} from "PaginatedTable";
+import {SearchInput} from "misc-ui";
+import {navigateTo} from "misc";
+
 
 interface GroupListProperties {
 }
 
-export class GroupList extends OGSComponent<GroupListProperties, any> {
+export class GroupList extends React.PureComponent<GroupListProperties, any> {
     refs: {
         table
     };
@@ -34,21 +38,30 @@ export class GroupList extends OGSComponent<GroupListProperties, any> {
         this.state = {
         };
     }
+    componentDidMount() {
+        window.document.title = _("Groups");
+    }
 
     render() {
         return (
-        <div>
-            <AdUnit unit="cdm-zone-01" nag/>
+        <div className="page-width">
             <div className="GroupList">
-                <div className='search-container'>
-                    <SearchInput
-                        placeholder={_("Search")}
-                        onChange={(event) => {
-                            this.refs.table.filter.name__istartswith = (event.target as HTMLInputElement).value.trim();
-                            this.refs.table.filter_updated();
-                        }}
-                    />
+
+                <div className="page-nav">
+                    <h2><i className="fa fa-users"></i> {_("Groups")}</h2>
+                    <div>
+                        <Link className="primary" to="/group/create"><i className="fa fa-plus-square"></i> {_("New group")}</Link>
+
+                        <SearchInput
+                            placeholder={_("Search")}
+                            onChange={(event) => {
+                                this.refs.table.filter.name__icontains = (event.target as HTMLInputElement).value.trim();
+                                this.refs.table.filter_updated();
+                            }}
+                        />
+                    </div>
                 </div>
+
                 <div className="group-list-container">
                     <PaginatedTable
                         className=""
@@ -56,8 +69,8 @@ export class GroupList extends OGSComponent<GroupListProperties, any> {
                         name="game-history"
                         source={`groups/`}
                         orderBy={["-member_count"]}
-                        filter={{ "name__istartswith": "" }}
-                        onRowClick={(row) => browserHistory.push(`/group/${row.id}`)}
+                        filter={{ "name__icontains": "" }}
+                        onRowClick={(row, ev) => navigateTo(`/group/${row.id}`, ev)}
                         columns={[
                             {header: "",  className: "group-icon-header",
                                 render: (X) => (<img className='group-icon' src={X.icon} width="64" height="64" />)},
@@ -77,9 +90,6 @@ export class GroupList extends OGSComponent<GroupListProperties, any> {
                         ]}
                     />
 
-                    <div className="start-a-new-group">
-                        {_("Want to start a new group?")} <a className="primary" href="/group/create">{_("Create a group here!")}</a>
-                    </div>
                 </div>
             </div>
         </div>

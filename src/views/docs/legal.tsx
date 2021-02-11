@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2012-2017  Online-Go.com
+ * Copyright (C) 2012-2020  Online-Go.com
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU Affero General Public License as
@@ -17,19 +17,22 @@
 
 import * as React from "react";
 
-export let TermsOfService = (props) => ( /* {{{ */
+export let TermsOfService = (props) => (
 <div className="container">
   <div className="column well">
 
     <div className="legal-paragraph">
-        <h1 style={{textDecoration: "underline"}}>Short Unofficial Version</h1> 
+        <h1 style={{textDecoration: "underline"}}>Short Unofficial Version</h1>
         <div className="legal-paragraph">
         <strong>Don't sue us.</strong> This is a free service, don't sue us
         if we have bugs or our servers go down. Don't sue us if you managed
         to lose money or anything else as a result of something you
         perceived to be our fault (whether it's our fault or not!) Don't
         sue us for anything our users do.  Don't sue us for any other
-        reason either.
+        reason either. </div>
+
+        <div className="legal-paragraph">
+        Don't cheat or harass people.
         </div>
 
         <div className="legal-paragraph">
@@ -44,6 +47,32 @@ export let TermsOfService = (props) => ( /* {{{ */
     In consideration of your use of the Service, you represent that you are of
     legal age to form a binding contract.
 
+    <h2>Code of Conduct</h2>
+
+    <div className="legal-paragraph">
+    By using our service you agree not to:
+    <ul>
+        <li>Cheat at any games provided by Online-Go.com</li>
+        <li>Threaten, harass, or stalk other members.</li>
+        <li>Upload, post, or otherwise make available any unlawful, harmful, threatening, abusive, defamatory, offensive, vulgar, obscene, libelous, hateful,
+            or otherwise objectionable content on Online-Go.com or any service which utilizes Online-Go.com Widgets or Software.</li>
+        <li>Impersonate any person or entity</li>
+        <li>Disrupt the normal flow of dialog or otherwise act in a manner that negatively affects other users' ability to communicate through or use Services provided by Online-Go.com</li>
+        <li>Intentionally or unintentionally violate any applicable local, state, national, or international law</li>
+    </ul>
+    </div>
+
+    <h2>No Cheating or Computer Help</h2>
+
+    <div className="legal-paragraph">
+    You can NEVER use Go programs (Leela, Zen, etc.) or neural networks to
+    analyze current ongoing games unless specifically permitted (e.g.,
+    a computer tournament). The only type of computer assistance
+    allowed is games databases for opening lines and joseki databases
+    for corner patterns in correspondence Go. You cannot receive ANY
+    outside assistance on live or blitz Go games.
+    </div>
+
     <h2>Services</h2>
 
     <div className="legal-paragraph">
@@ -57,7 +86,7 @@ export let TermsOfService = (props) => ( /* {{{ */
     notice. You agree that Online-Go.com shall not be liable to you or to any third
     party for any modification, suspension or discontinuance of the Service.
     </div>
-    
+
 
 
     <h2>User Accounts</h2>
@@ -113,28 +142,11 @@ export let TermsOfService = (props) => ( /* {{{ */
     third party for any termination of your account or access to the
     Service.
 
-    <h2>Code of Conduct</h2>
-
-    <div className="legal-paragraph">
-    By using our service you agree not to:
-    <ul>
-        <li>Cheat at any games provided by Online-Go.com</li>
-        <li>Threaten, harass, or stalk other members.</li>
-        <li>Upload, post, or otherwise make available any unlawful, harmful, threatening, abusive, defamatory, offensive, vulgar, obscene, libelous, hateful, 
-            or otherwise objectionable content on Online-Go.com or any service which utilizes Online-Go.com Widgets or Software.</li>
-        <li>Impersonate any person or entity</li>
-        <li>Disrupt the normal flow of dialog or otherwise act in a manner that negatively affects other users' ability to communicate through or use Services provided by Online-Go.com</li>
-        <li>Intentionally or unintentionally violate any applicable local, state, noational, or international law</li>
-        <li>Solicit or advertise for any competing Go services</li>
-    </ul>
-    </div>
-
-
     <h2>Content</h2>
 
     <div className="legal-paragraph">
     You acknowledge and understand that all Content (including but not
-    limited to text, photographs, and videos), whether it be publicly 
+    limited to text, photographs, and videos), whether it be publicly
     posted or privately transmitted, is the sole responsibility of the
     person who created, posted, or otherwise transmitted the Content. Online-Go.com does
     not monitor or control user created Content, and as such does not guarantee
@@ -178,7 +190,7 @@ export let TermsOfService = (props) => ( /* {{{ */
     </div>
 
 
-    <h2>Advertisments</h2>
+    <h2>Advertisements</h2>
 
     <div className="legal-paragraph">
     As consideration for your use of Online-Go.com services, you agree that
@@ -293,7 +305,7 @@ export let TermsOfService = (props) => ( /* {{{ */
     LIABLE TO YOU FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, CONSEQUENTIAL OR
     EXEMPLARY DAMAGES, INCLUDING, BUT NOT LIMITED TO, DAMAGES FOR LOSS OF PROFITS,
     GOODWILL, USE, DATA OR OTHER INTANGIBLE LOSSES (EVEN IF ONLINE-GO.COM HAS BEEN
-    ADVISED OF THE POSSIBILITY OF SUCH DAMAGES), RESULTING FROM: 
+    ADVISED OF THE POSSIBILITY OF SUCH DAMAGES), RESULTING FROM:
     <ol>
         <li>THE USE OR THE INABILITY TO USE THE SERVICE</li>
         <li>
@@ -302,9 +314,9 @@ export let TermsOfService = (props) => ( /* {{{ */
         OR OBTAINED OR MESSAGES RECEIVED OR TRANSACTIONS ENTERED INTO THROUGH OR FROM
         THE SERVICE
         </li>
-        <li> 
+        <li>
         UNAUTHORIZED ACCESS TO OR ALTERATION OF YOUR TRANSMISSIONS OR DATA
-        </li> 
+        </li>
         <li>STATEMENTS OR CONDUCT OF ANY THIRD PARTY ON THE SERVICE </li>
         <li> ANY OTHER MATTER RELATING TO THE SERVICE.</li>
     </ol>
@@ -344,13 +356,13 @@ export let TermsOfService = (props) => ( /* {{{ */
 
   </div>
 </div>
-); /* }}} */
+);
 
-export let PrivacyPolicy = (props) => ( /* {{{ */
+export let PrivacyPolicy = (props) => (
 <div className="container">
   <div className="column well">
     <div className="legal-paragraph">
-        <h1 style={{textDecoration: "underline"}}>Short Version</h1> 
+        <h1 style={{textDecoration: "underline"}}>Short Version</h1>
             <strong>Online-Go.com will not sell your private information to
                 anyone.</strong> Nor will we share your private
             information with anyone, except under obvious scenarios
@@ -397,7 +409,7 @@ export let PrivacyPolicy = (props) => ( /* {{{ */
     address. Your username is listed publicly on our Services, including
     your profile page and in search results.
 
-    <h5>Additional Information:</h5> 
+    <h5>Additional Information:</h5>
     <div className="legal-paragraph">
     You may provide us with profile information to make public, such as
     your real name, a short biography, location information, pictures, and
@@ -426,18 +438,18 @@ export let PrivacyPolicy = (props) => ( /* {{{ */
     Data") created by your use of our Services. Log Data may include
     information such as your IP address, browser type, operating system,
     the referring web page, pages visited, location, device and application ids,
-    service provider, mobile carrier, search terms, and cookie information. 
+    service provider, mobile carrier, search terms, and cookie information.
     Log data is usually recorded when you interact with our Services, for example
     when you visit our website, play a game, sign in, interact with our email notifications,
     or visit a third-party site that includes an embedded game board or other
-    widget we provide.  
+    widget we provide.
 
 
 
     <h5>Third-Party Service Providers:</h5> Online-Go.com uses a variety of
     third-party services to help provide our Services, such as data centers,
     email services, analytics services, polling services, and others.
-    These third-party service providers may collect information  
+    These third-party service providers may collect information
     may collect information sent by your browser as part of a web page
     request, such as cookies, your IP address, browser type, operating system,
     referring web page, search terms, and other information.
@@ -515,17 +527,17 @@ export let PrivacyPolicy = (props) => ( /* {{{ */
 
   </div>
 </div>
-); /* }}} */
-export let ContactInformation = (props) => ( /* {{{ */
+);
+export let ContactInformation = (props) => (
 <div style={{textAlign: "center", padding: "4em"}}>
     <h3>For <span style={{fontWeight: "bold",  textDecoration: "underline"}}>non-support</span> related contact, please drop us an email at:</h3>
 
     <h4><a href="mailto:contact@online-go.com">contact@online-go.com</a></h4>
 
-    (For support, please use the forums here: <a href="http://forums.online-go.com/">http://forums.online-go.com/</a>.)
+    <br/>For support, please use the forums: <a href="http://forums.online-go.com">http://forums.online-go.com</a>.
 </div>
-); /* }}} */
-export let RefundPolicy = (props) => ( /* {{{ */
+);
+export let RefundPolicy = (props) => (
 <div className="container">
     <div className="column well">
         <h1>Refund Policy</h1>
@@ -537,4 +549,4 @@ export let RefundPolicy = (props) => ( /* {{{ */
         </div>
     </div>
 </div>
-); /* }}} */
+);

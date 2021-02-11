@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2012-2017  Online-Go.com
+ * Copyright (C) 2012-2020  Online-Go.com
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU Affero General Public License as
@@ -16,19 +16,18 @@
  */
 
 import * as React from "react";
-import {Link, browserHistory} from "react-router";
+import {Link} from "react-router-dom";
+import {browserHistory} from "ogsHistory";
 import * as data from "data";
 import {_} from "translate";
 import {Card} from "material";
 import {errorAlerter} from "misc";
 import {LineText} from "misc-ui";
-import {OGSComponent} from "components";
-import {post, get} from "requests";
+import {post} from "requests";
 import {get_ebi} from "SignIn";
+import cached from 'cached';
 
-declare var swal;
-
-export class Register extends OGSComponent<{}, any> {
+export class Register extends React.PureComponent<{}, any> {
     refs: {
         username: any;
         email: any;
@@ -37,10 +36,10 @@ export class Register extends OGSComponent<{}, any> {
 
     constructor(props) {
         super(props);
-        this.state = { };
+        this.state = {};
     }
 
-    register = (event) => {
+    register = event => {
         let actually_register = () => {
             console.log("Should be logging in");
 
@@ -50,14 +49,17 @@ export class Register extends OGSComponent<{}, any> {
                 "email": this.refs.email.value.trim(),
                 "ebi": get_ebi()
             }).then((config) => {
-                data.set("config", config);
-                console.log("Logged in!");
-                console.info(config);
-                browserHistory.replace("/");
+                data.set(cached.config, config);
+
+                if (window.location.hash && window.location.hash[1] === "/") {
+                    window.location.pathname = window.location.hash.substr(1);
+                } else {
+                    window.location.pathname = "/";
+                }
             }).catch(errorAlerter);
         };
 
-        let focus_empty = () => {
+        let focus_empty = (focus_email?: boolean) => {
             if (this.refs.username.value.trim() === "" || !this.validateUsername()) {
                 this.refs.username.focus();
                 return true;
@@ -68,12 +70,15 @@ export class Register extends OGSComponent<{}, any> {
                 return true;
             }
 
-
             if (this.refs.password.value.trim() === "") {
                 this.refs.password.focus();
                 return true;
             }
-            if (this.refs.email.value.trim() === "") {
+            if (
+                focus_email &&
+                this.refs.email.value.trim() === "" &&
+                this.refs.email !== document.activeElement
+            ) {
                 this.refs.email.focus();
                 return true;
             }
@@ -91,13 +96,12 @@ export class Register extends OGSComponent<{}, any> {
         if (event.type === "keypress") {
             if (event.charCode === 13) {
                 event.preventDefault();
-                if (focus_empty()) {
+                if (focus_empty(true)) {
                     return false;
                 }
                 actually_register();
             }
         }
-
 
         if (event.type === "click" || event.charCode === 13) {
             return false;
@@ -119,37 +123,37 @@ export class Register extends OGSComponent<{}, any> {
         return true;
     }
 
-
     render() {
         return (
-        <div id="Register">
-            <Card>
-            <h2>{_("Welcome new player!")}</h2>
-                <form name="login" autoComplete="on">
-                    <input className="boxed" autoFocus ref="username" name="username" onKeyPress={this.register} onChange={this.validateUsername} placeholder={_("Username") /* translators: New account registration */} />
-                    {this.state.error && <div className="error-message">{this.state.error}</div>}
-                    <input className="boxed" ref="password" type="password" name="password" onKeyPress={this.register} placeholder={_("Password") /* translators: New account registration */} />
-                    <input className="boxed" ref="email" type="email" name="email" onKeyPress={this.register} placeholder={_("Email") /* translators: New account registration */} />
-                    <div style={{textAlign: "right", marginBottom: "1.0rem"}}>
-                        <button className="primary" onClick={this.register}>
-                            <i className="fa fa-sign-in"/> {_("Sign up")}
-                        </button>
-                    </div>
-                </form>
+            <div id="Register">
+                <Card>
+                    <h2>{_("Welcome new player!")}</h2>
+                    <form name="login" autoComplete="on">
+                        <label htmlFor="username">{_("Username") /* translators: New account registration */}</label>
+                        <input className="boxed" id="username" autoFocus ref="username" name="username" onKeyPress={this.register} onChange={this.validateUsername} />
+                        {this.state.error && <div className="error-message">{this.state.error}</div>}
+                        <label htmlFor="password">{_("Password") /* translators: New account registration */}</label>
+                        <input className="boxed" id="password" ref="password" type="password" name="password" onKeyPress={this.register} />
+                        <label htmlFor="email">{_("Email (optional)") /* translators: New account registration */}</label>
+                        <input className="boxed" id="email" ref="email" type="email" name="email" onKeyPress={this.register} />
+                        <div style={{textAlign: "right", marginBottom: "1.0rem"}}>
+                            <button className="primary" onClick={this.register}>
+                                <i className="fa fa-sign-in" /> {_("Sign up")}
+                            </button>
+                        </div>
+                    </form>
 
-                <div className="social-buttons">
-                    <LineText>{
-                        _("or sign in with") /* translators: username or password, or sign in with social authentication */
-                    }</LineText>
-                    <a className="zocial google icon"
-                        href="/login/google-oauth2/" target="_self">Google</a>
-                    <a className="zocial facebook icon"
-                        href="/login/facebook/" target="_self">Facebook</a>
-                    <a className="zocial twitter icon"
-                        href="/login/twitter/" target="_self">Twitter</a>
-                </div>
-            </Card>
-        </div>
+                    <div className="social-buttons">
+                        <LineText>{
+                            _("or log in to your account:") /* translators: username or password, or sign in to your account */
+                        }</LineText>
+                        <Link to="/sign-in" className="s btn md-icon"><i className='email-icon fa fa-envelope-o' /> {_("Login with Email")}</Link>
+                        <a href="/login/google-oauth2/" className="s btn md-icon" target="_self"><span  className="google google-icon" /> {_("Login with Google")}</a>
+                        <a href="/login/facebook/" className="s btn md-icon" target="_self"><span className="facebook facebook-icon" /> {_("Login with Facebook")}</a>
+                        <a href="/login/twitter/" className="s btn md-icon" target="_self"><i className="twitter twitter-icon fa fa-twitter" />{_("Login with Twitter")}</a>
+                    </div>
+                </Card>
+            </div>
         );
     }
 }

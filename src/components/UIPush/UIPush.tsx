@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2012-2017  Online-Go.com
+ * Copyright (C) 2012-2020  Online-Go.com
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU Affero General Public License as
@@ -19,7 +19,6 @@
 import * as React from "react";
 import {_, pgettext, interpolate} from "translate";
 import {post, get} from "requests";
-import {OGSComponent, Resolver} from "components";
 import {comm_socket} from "sockets";
 
 interface UIPushProperties {
@@ -98,7 +97,7 @@ class UIPushManager {
     }
     unsubscribe(channel) {
         if (this.subscriptions[channel] > 1) {
-            this.subscriptions[channel] = 0;
+            this.subscriptions[channel]--;
         } else {
             delete this.subscriptions[channel];
             if ((comm_socket as any).connected) {
@@ -108,7 +107,7 @@ class UIPushManager {
     }
 }
 
-let push_manager = new UIPushManager();
+export let push_manager = new UIPushManager();
 
 export class UIPush extends React.Component<UIPushProperties, any> {
     handler: Handler = null;

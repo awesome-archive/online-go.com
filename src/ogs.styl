@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2012-2017  Online-Go.com
+ * Copyright (C) 2012-2020  Online-Go.com
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU Affero General Public License as
@@ -16,6 +16,7 @@
  */
 
 font-size-big = 16pt
+font-size-mid = 14pt
 font-size-normal = 12pt
 font-size-small = 10pt
 font-size-smaller = 8pt
@@ -47,16 +48,19 @@ z = {
     omnisearch         : 160,
     announcements      : 180,
     toast              : 200,
-    friend-list        : 300,
+    friend-list: {
+        backdrop       : 300,
+        menu           : 310
+    },
     nav-menu: {
         backdrop       : 1000,
         menu           : 1010,
     },
+    player-autocomplete: 1900,
     modal: {
         backdrop       : 2000,
         container      : 2010,
     },
-    player-autocomplete: 3000,
     popover            : 5000,
     swal               : 10000,
     superchat-modal    : 50005,
@@ -79,6 +83,7 @@ dark.clear = transparent
 //light.bg                                = #f0f0f0
 light.bg                                = #fff
 light.fg                                = #202020
+light.fg-increased-contrast             = #000000
 light.mix-base                          = #999
 light.background-color                  = light.bg
 light.card-background-color             = lighten(light.bg, 20%)
@@ -106,23 +111,42 @@ light.malkovich-bg                      = #CCE3D5
 light.variation                         = #0088cc
 light.variation-hover                   = #005580
 light.email-banner                      = #CEDBCF
+light.chart-area                        = #E6F6FE
+light.chart-line                        = #184A6B
+light.error-boundary-bg                 = lighten(light.reject, 50%)
+light.error-boundary-fg                 = darken(light.reject, 50%)
 
 //light.supporter                         = #fdd017;
 light.user                              = #3070A7
 light.supporter                         = #DBAF00;
+light.aga-official                      = #B95200;
+light.professional                      = green;
 light.bot                               = #888;
 light.moderator                         = #9733EE
 light.admin                             = light.moderator
 light.ambassador                        = #6FCDEA
 light.teacher                           = #27AD49
-light.chat-mentions                     = #C81E1E
-//light.chat-mentions                     = #107A00 // green
-//light.chat-mentions                     = #ff5200 // orange
 light.chat-mentions                     = #DB397A // pink
 light.chat-self-message                 = #0449C4
 light.chat-system                       = #1CA760
+light.private-chat-user                 = #111111
 
+light.win                               = #73D355
+light.loss                              = #BC4B9A
 
+light.weak-win                          = lighten(light.win, 25%)
+light.weak-loss                         = lighten(light.loss, 25%)
+
+light.strong-win                        = darken(light.win, 25%)
+light.strong-loss                       = darken(light.loss, 25%)
+
+light.strong-w-text                     = light.bg
+light.strong-l-text                     = light.bg
+light.weak-w-text                       = light.fg
+light.weak-l-text                       = light.fg
+
+light.winner-trophy                     = #e6c525
+light.annul-opacity                    = 0.5
 
 light.shade0                            = lighten(light.fg, 20%)
 light.shade1                            = lighten(light.fg, 40%)
@@ -131,6 +155,24 @@ light.shade3                            = lighten(light.fg, 80%)
 light.shade4                            = lighten(light.fg, 90%)
 light.shade5                            = lighten(light.fg, 95%)
 
+light.search-highlight                  = #FFEA00
+
+// these are currently the same colour as painted on the board for positions of this type.
+// may need tweaking to look better...
+light.joseki-ideal                      = #008300
+light.joseki-good                       = #436600
+light.joseki-trick                      = #ffff00
+light.joseki-question                   = #00ccff
+light.joseki-mistake                    = #b3001e
+
+/** React Select colors **/
+
+light.react-select-bg                   = light.bg
+light.react-select-border               = light.shade3
+light.react-select-selected-bg          = #2684FF
+light.react-select-selected-fg          = #FFFFFF
+light.react-select-focused-bg           = #DEEBFF
+light.react-select-focused-fg           = light.fg
 
 /** Navbar **/
 
@@ -158,14 +200,18 @@ light.miniboard-stone-removal           = #FBfbD8
 light.miniboard-stone-removal-border    = darken(light.miniboard-stone-removal, 45%)
 light.miniboard-stone-removal-hover     = lighten(light.miniboard-stone-removal, 45%)
 light.miniboard-stone-removal-hover-border= darken(light.miniboard-stone-removal-hover, 45%)
-light.player-black-background           = linear-gradient(to bottom, #7d7e7d 0%,#0e0e0e 100%);
-light.player-white-background           = linear-gradient(to bottom, #ffffff 0%,#e5e5e5 100%);
+light.player-black-background           = linear-gradient(to bottom, #7d7e7d 0%, #0e0e0e 100%);
+light.player-white-background           = linear-gradient(to bottom, #cccccc 0%, #eeeeee 30%, #ffffff 100%);
+light.inactive-support-gradient         = linear-gradient(to bottom, #ffffff 0%, #e5e5e5 100%);
+light.active-support-gradient           = linear-gradient(to bottom, #ffffff 0%, lighten(light.supporter, 70%) 100%);
 light.player-black-fg                   = #eeeeee
 light.player-white-fg                   = light.fg
 light.player-black-name                 = lighten(light.user, 60%)
 light.player-white-name                 = light.user
 light.player-black-clock                = lighten(light.player-black-fg, 50%)
 light.player-white-clock                = light.player-white-fg
+light.player-black-paused-clock          = #ABA8AD;
+light.player-white-paused-clock          = #928A99;
 
 /************/
 /*** DARK ***/
@@ -174,6 +220,7 @@ core-color-darken-amount = 20%
 
 dark.bg                                 = #1a1a1a
 dark.fg                                 = #bbbbbb
+dark.fg-increased-contrast              = #ffffff
 dark.mix-base                           = #777
 dark.background-color                   = dark.bg
 dark.card-background-color              = lighten(dark.bg, 7%)
@@ -198,14 +245,20 @@ dark.malkovich-bg                       = #597053
 dark.variation                          = #00aaff
 dark.variation-hover                    = #1A93D0
 dark.email-banner                       = #2A492B
+dark.chart-area                         = #092D3E
+dark.chart-line                         = #329BE0
+dark.error-boundary-bg                  = darken(light.reject, 50%)
+dark.error-boundary-fg                  = lighten(light.reject, 50%)
 
 dark.user                               = #9dc6ff
-dark.supporter                          = #FFCC00;
+dark.supporter                          = light.supporter; // because it ends up against a light background in player-container
+dark.aga-official                       = light.aga-official;
+dark.professional                       = green;
 dark.bot                                = light.bot
 dark.moderator                          = lighten(light.moderator, 20%)
 dark.admin                              = lighten(light.admin, 20%)
 dark.ambassador                         = light.ambassador
-dark.teacher                            = light.teacher 
+dark.teacher                            = light.teacher
 
 dark.shade0                             = lighten(dark.bg, 70%)
 dark.shade1                             = lighten(dark.bg, 50%)
@@ -214,13 +267,39 @@ dark.shade3                             = lighten(dark.bg, 25%)
 dark.shade4                             = lighten(dark.bg, 20%)
 dark.shade5                             = lighten(dark.bg, 13%)
 
-//dark.chat-mentions                      = lighten(light.chat-mentions, 10%)
-dark.chat-mentions                      = #86D88D // green
-dark.chat-mentions                      = #ED7C1A // orange
-dark.chat-mentions                      = #E36497 // ping
-//dark.chat-mentions                      = #C56767  // red
+dark.search-highlight                  = #554E00
+
+dark.chat-mentions                      = #E36497 // pink
 dark.chat-self-message                  = #8AB1E6
 dark.chat-system                        = lighten(light.chat-system, 20%)
+dark.private-chat-user                  = #eeeeee
+
+
+dark.win                                = desaturate(darken(light.win, 30%), 20%)
+dark.loss                               = desaturate(darken(light.loss, 30%), 20%)
+
+dark.strong-win                         = lighten(dark.win, 25%)
+dark.strong-loss                        = lighten(dark.loss, 25%)
+
+dark.weak-win                           = darken(dark.win, 25%)
+dark.weak-loss                          = darken(dark.loss, 25%)
+
+dark.strong-w-text                      = dark.bg
+dark.strong-l-text                      = dark.bg
+dark.weak-w-text                        = dark.fg
+dark.weak-l-text                        = dark.fg
+
+dark.winner-trophy                     = #e6b500
+dark.annul-opacity                    = 0.3
+
+/** React Select colors **/
+
+dark.react-select-bg                   = dark.shade4
+dark.react-select-border               = dark.shade5
+dark.react-select-selected-bg          = #2684FF
+dark.react-select-selected-fg          = #FFFFFF
+dark.react-select-focused-bg           = #435B80
+dark.react-select-focused-fg           = #ffffff
 
 /** Navbar **/
 
@@ -249,13 +328,19 @@ dark.miniboard-stone-removal-border     = darken(dark.miniboard-stone-removal, 4
 dark.miniboard-stone-removal-hover      = darken(dark.miniboard-stone-removal, 45%)
 dark.miniboard-stone-removal-hover-border= darken(dark.miniboard-stone-removal-hover, 45%)
 dark.player-black-background            = linear-gradient(to bottom, #7d7d7d 0%, #333333 50%, #0c0c0c 100%);
-dark.player-white-background            = linear-gradient(to bottom, #dddddd 0%, #666666 50%, #333333 101%);
+dark.player-white-background            = linear-gradient(to bottom, #888888 0%, #efefef 50%, #efefef 100%);
+dark.inactive-support-gradient          = linear-gradient(to bottom, #7d7d7d 0%, #333333 100%);
+dark.active-support-gradient            = linear-gradient(to bottom, darken(dark.supporter, 30%) 0%, darken(dark.supporter, 60%) 100%);
 dark.player-black-fg                    = dark.fg
-dark.player-white-fg                    = lighten(dark.fg, 20%)
+dark.player-white-fg                    = darken(dark.fg, 90%)
 dark.player-black-name                  = dark.user
-dark.player-white-name                  = lighten(dark.user, 10%)
+dark.player-white-name                  = darken(dark.user, 60%)
 dark.player-black-clock                 = lighten(dark.player-black-fg, 50%)
 dark.player-white-clock                 = #000
+dark.player-white-paused-clock          = #5F4A71;
+dark.player-black-paused-clock          = #928A99;
+
+dark.joseki-ideal                       = #DBAF00;
 
 
 /************/
@@ -277,26 +362,26 @@ nowrap()
     white-space: nowrap;
 
 
+@require "global_styl/mixins.styl";
+@require "global_styl/global.styl";
+@require "global_styl/bootstrap-esq.styl";
+@require "global_styl/misc-ui.styl";
+@require "global_styl/ogs-font.styl";
+@require "../node_modules/goban/src/Goban.styl";
+@require "global_styl/swal.styl";
+@require "global_styl/flags16.styl";
+@require "global_styl/flags32.styl";
+@require "global_styl/font-awesome-hacks.styl";
+@require "global_styl/react-datetime.styl";
+@require "global_styl/react-autosuggest.styl";
 
-@import "global_styl/mixins.styl";
-@import "global_styl/global.styl";
-@import "global_styl/bootstrap-esq.styl";
-@import "global_styl/misc-ui.styl";
-@import "global_styl/zocial-fixes.styl";
-@import "global_styl/ogs-font.styl";
-@import "lib/ogs-goban/Goban.styl";
-@import "global_styl/swal.styl";
-@import "global_styl/flags16.styl";
-@import "global_styl/flags32.styl";
-@import "global_styl/font-awesome-hacks.styl";
-@import "global_styl/react-datetime.styl";
-@import "global_styl/react-autosuggest.styl";
+@require "lib/popover.styl";
+@require "lib/toast.styl";
+@require "lib/ogs-react-select.styl";
 
-@import "lib/popover.styl";
-@import "lib/toast.styl";
+@require "./components/material/*.styl";
+@require "./components/[A-Z]*/*.styl";
+@require "./views/[A-Z]*/*.styl";
+@require "./views/docs/*.styl";
 
-@import "./components/*.styl";
-@import "./components/[A-Z]*/*.styl";
-@import "./views/[A-Z]*/*.styl";
-@import "./views/docs/*.styl";
-
+@require '../node_modules/react-table/react-table.css';

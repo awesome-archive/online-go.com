@@ -16,15 +16,6 @@
             true,
             "LF"
         ],
-        "member-ordering": [
-            true,
-            {
-                "order": [
-                    "variables-before-functions",
-                    "fields-first"
-                ]
-            }
-        ],
         "no-angle-bracket-type-assertion": true,
         "no-arg": true,
         "no-conditional-assignment": true,
@@ -35,6 +26,7 @@
         "no-construct": true,
         "no-debugger": true,
         "no-eval": true,
+        "no-floating-promises": true,
         "no-internal-module": true,
         "no-trailing-whitespace": true,
         "no-unnecessary-initializer": true,
@@ -77,11 +69,9 @@
                 "call-signature": "nospace",
                 "index-signature": "nospace",
                 "parameter": "nospace",
-                "property-decl  aration": "nospace",
                 "variable-declaration": "nospace"
             }
         ],
-        "typeof-compare": true,
         "use-isnan": true,
         "variable-name": [
             true,
@@ -92,7 +82,6 @@
             "check-branch",
             "check-decl",
             "check-operator",
-            "check-module",
             "check-separator"
         ]
     }

@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2012-2017  Online-Go.com
+ * Copyright (C) 2012-2020  Online-Go.com
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU Affero General Public License as
@@ -16,6 +16,8 @@
  */
 
 .User {
+    padding-top: 3rem;
+
     dt, dd {
         margin-bottom: 0.5em;
     }
@@ -24,9 +26,19 @@
         margin: 0;
     }
 
-    dd {
-        display: inline-flex !important;
-        align-items: center;
+    h4 {
+        margin-top: 0.3rem;
+        img {
+            margin-right: 0.5rem;
+            margin-left: 0.5rem;
+        }
+        .fa {
+            margin-right: 0.4rem;
+            margin-left: 0.4rem;
+        }
+    }
+
+    div {
         .f32 {
             display: inline-flex !important;
             align-items: flex-end;
@@ -37,8 +49,55 @@
         }
     }
 
+    .name-input {
+        width: 6rem;
+    }
+
+    .dropzone-container {
+        display: flex;
+        justify-content: center;
+    }
+
+    .user-details {
+        display: flex;
+        flex-direction: column;
+        justify-content: space-between;
+    }
+
+    .username-input {
+        font-size: font-size-big;
+    }
+
+    .username {
+        font-size: font-size-big;
+        max-width: stretch;
+    }
+    .ratings-title {
+        font-size: font-size-big;
+        display: inline-flex;
+        justify-content: space-between;
+        align-items: center;
+
+        .Toggle {
+
+        }
+    }
+
+    .country-line {
+        display: flex;
+        flex-direction: row;
+        align-items: center;
+    }
+
     .trophies {
-        flex-wrap: wrap;
+        //height: 24px;
+        a {
+            height: 24px;
+        }
+    }
+
+    .clear-icon-container {
+        text-align: center;
     }
 
     #rating-history {
@@ -54,15 +113,18 @@
         }
     }
 
+    .activity-card > div {
+        margin-bottom: 1em;
+    }
+
     .profile-card {
         position: relative;
+        .row {
+            flex-wrap: nowrap;
+        }
     }
 
     .edit-button {
-        //position: absolute;
-        //top: 0rem;
-        //right: 1rem;
-        margin-left: 1rem;
         .fa-save, .fa-pencil {
             padding-right: 0.3rem;
         }
@@ -71,8 +133,7 @@
     td.date {
         width: 7em;
         text-align: left;
-        margin-right: 1em;
-        //display: inline-block;
+        padding-right: 0.5em;
     }
 
     td.banned, th.banned {
@@ -131,7 +192,7 @@
         margin-left: -0.2rem;
         min-height: 10em;
     }
-    
+
     .progress-bar.left {
         position: relative;
         text-align: left;
@@ -152,6 +213,15 @@
     .progress-bar.right span {
         position: relative;
         padding-right: 0.5rem;
+        themed color colored-background-fg
+    }
+
+    .games-won {
+        themed background-color win
+        themed color colored-background-fg
+    }
+    .games-lost {
+        themed background-color loss
         themed color colored-background-fg
     }
 
@@ -194,13 +264,313 @@
     }
 
     .search {
-        text-align: right;
+        display: flex;
+        align-items: flex-end;
+
+        i { // the search icon
+            // This would give us the themed underline
+            // .. but it is bugged in Chrome.
+            // @extend input;
+            font-size: smaller;
+            margin-left: 1 rem;
+            padding-right: 0.25 rem;
+            padding-bottom: 0.4em;
+        }
+    }
+
+    .avatar-and-ratings-row {
+        display: flex;
+        flex-wrap: wrap;
+        justify-content: space-around;
+        align-items: stretch;
+    }
+    .avatar-container {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        align-content: center;
+        min-width: 20rem;
+        flex: 0;
+        padding-right: 0.5rem;
+        justify-content: space-between;
+    }
+    .ratings-container {
+        display: flex;
+        flex-direction: column;
+        overflow-x: auto;
+    }
+
+    .avatar-subtext {
+        text-align: center;
+    }
+
+    .avatar-button {
+        display: flex;
+        justify-content: space-between;
+    }
+
+    .about-container {
+        display: flex;
+        justify-content: stretch;
+        align-items: stretch;
+        align-content: stretch;
+        max-height: 90rem;
     }
 
     .about-markdown {
+        flex: 1;
+        overflow-y: auto;
         > div :first-child {
             margin-top: 0;
             padding-top: 0;
         }
     }
+
+    .ratings-grid {
+        display: table;
+        margin-right: 1rem;
+        .speed {
+            display: table-row;
+            .cell {
+                display: table-cell;
+                padding: 0.3rem;
+                text-align: center;
+                vertical-align: middle;
+            }
+        }
+        .title-row {
+            display: table-row;
+
+        }
+
+        .title {
+            display: table-cell;
+            font-weight: bold;
+            text-align: center;
+            vertical-align: middle;
+        }
+        .speed-icon {
+            width: 1.5rem !important;
+            text-align: center;
+        }
+
+        .rating-entry {
+            white-space: nowrap;
+            cursor: pointer;
+
+            border: 1px solid transparent;
+            border-radius: 0.3rem;
+
+            &.unset {
+                themed color shade3;
+            }
+
+            &.active {
+                themed background-color chart-area;
+                themed border-color chart-line;
+            }
+
+            &:hover {
+                themed background-color chart-area;
+            }
+
+            .rating {
+            }
+            .ranking {
+                font-size: font-size-small;
+            }
+
+            .left, .right {
+                display: inline-block;
+                margin: 0;
+                padding: 0;
+            }
+            .left {
+                width: 3rem;
+                padding-right: 0.3rem;
+            }
+            .right {
+                width: 3rem;
+                padding-left: 0.3rem;
+            }
+        }
+    }
+
+    .ratings-row {
+        margin-top: 1.5rem;
+        margin-bottom: 1rem;
+        display: flex;
+        flex-direction: row;
+        flex-wrap: nowrap;
+
+        .ratings-chart {
+            flex-grow: 1;
+        }
+    }
+
+    .website-url {
+        //width: 100%;
+        max-width: 100%;
+        overflow: hidden;
+        white-space: nowrap;
+        text-overflow: ellipsis;
+
+        input {
+            width: 100%;
+        }
+    }
+
+    .game-history-table, .review-history-table {
+        .game_name, .date, .player, .library-lost-result, .library-won-result, .library-tie-result, .library-lost-result-vs-weaker, .library-lost-result-vs-stronger, .library-won-result-vs-stronger, .library-won-result-vs-weaker, .library-won-result-unranked, .library-lost-result-unranked, .library-hidden-result {
+            white-space: nowrap;
+        }
+
+         .library-lost-result, .library-won-result, .library-tie-result, .library-lost-result-vs-weaker, .library-lost-result-vs-stronger, .library-won-result-vs-stronger, .library-won-result-vs-weaker, .library-won-result-unranked, .library-lost-result-unranked, .library-hidden-result {
+            overflow: hidden;
+        }
+
+        .library-lost-result-vs-weaker {
+          themed background-color weak-loss
+          themed color weak-l-text
+        }
+
+        .library-lost-result-vs-stronger {
+          themed background-color strong-loss
+          themed color strong-l-text
+        }
+
+        .library-won-result-vs-stronger {
+          themed background-color strong-win
+          themed color strong-w-text
+        }
+
+        .library-won-result-vs-weaker {
+          themed background-color weak-win
+          themed color weak-w-text
+        }
+
+        .library-won-result-unranked {
+          themed color strong-win
+        }
+
+        .library-lost-result-unranked {
+          themed color strong-loss
+        }
+
+        .game_name {
+            a {
+                color: unset;
+            }
+            max-width: 15rem;
+            overflow: hidden;
+            padding-left: 0.5em;
+            text-overflow: ellipsis;
+        }
+
+        .player {
+            max-width: 12rem;
+            overflow: hidden;
+        }
+
+        span {
+            padding-right: 0.3em;
+            vertical-align: middle;
+        }
+
+        .user_info  {
+            white-space: nowrap;
+        }
+
+        .winner_marker {
+            themed color winner-trophy;
+            padding-left: 4px;
+            vertical-align: middle;
+            padding-right: 4px;
+        }
+
+        .annulled {
+            themed opacity annul-opacity;
+        }
+    }
+
+    .moderator-log {
+        td {
+            vertical-align: top;
+        }
+
+
+        .date {
+            @extend .monospace
+            width: 7em;
+            text-align: left;
+            padding-right: 1em;
+            font-size: 0.7rem;
+        }
+
+        .action {
+            @extend .monospace
+            font-size: 0.8rem;
+
+            a {
+                padding-right: 1rem;
+            }
+        }
+
+        pre {
+            white-space: pre-wrap;
+            word-wrap: break-word;
+        }
+    }
+
+    button.toggle-ratings {
+        display: block;
+        margin: 10px auto;
+    }
+
+    .SpicyDragon-trophy {
+        img {
+            width: 340px;
+            height: 400px;
+        }
+
+        text-align: center;
+        max-width: 100%;
+    }
+
+
+    .SelfReportedAccountLinkages {
+        .association-link, .server-link {
+            display: flex;
+            align-items: middle;
+            justify-content: center;
+
+            .name {
+                display: inline-block;
+                margin-left: 0.5rem;
+                width: 10rem;
+                overflow: hidden;
+            }
+            .id {
+                display: inline-block;
+                margin-left: 0.5rem;
+                width: 5rem;
+                overflow: hidden;
+            }
+            .rank {
+                margin-left: 0.5rem;
+                display: inline-block;
+                width: 2rem;
+            }
+        }
+        .server-link {
+            .name {
+                margin-left: 1.5rem;
+                width: 7rem;
+            }
+            .id {
+                width: 8rem;
+            }
+        }
+    }
 }
+

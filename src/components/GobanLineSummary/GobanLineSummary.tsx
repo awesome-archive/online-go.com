@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2012-2017  Online-Go.com
+ * Copyright (C) 2012-2020  Online-Go.com
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU Affero General Public License as
@@ -16,23 +16,26 @@
  */
 
 import * as React from "react";
+import {Link} from 'react-router-dom';
 import {_, interpolate} from "translate";
 import {Goban} from "goban";
-import data from "data";
+import * as data from "data";
 import {PersistentElement} from "PersistentElement";
-import {rankString, navigateTo} from "misc";
+import {rankString} from "rank_utils";
 import {Player} from "Player";
+import {Clock} from "Clock";
 
 interface GobanLineSummaryProps {
     id: number;
     black: any;
     white: any;
     player?: any;
+    gobanref?: (goban:Goban) => void;
+    width?: number;
+    height?: number;
 }
 
 export class GobanLineSummary extends React.Component<GobanLineSummaryProps, any> {
-    white_clock;
-    black_clock;
     goban;
 
     constructor(props) {
@@ -41,34 +44,28 @@ export class GobanLineSummary extends React.Component<GobanLineSummaryProps, any
             white_score: "",
             black_score: "",
         };
-
-        this.white_clock = $("<span>");
-        this.black_clock = $("<span>");
     }
 
-    componentDidMount() {{{
+    componentDidMount() {
         this.initialize();
-    }}}
-    componentWillUnmount() {{{
+    }
+    componentWillUnmount() {
         this.destroy();
-    }}}
-    componentDidUpdate(prev_props) {{{
+    }
+    componentDidUpdate(prev_props) {
         if (prev_props.id !== this.props.id) {
             this.destroy();
             this.initialize();
         }
-    }}}
+    }
 
-    initialize() {{{
+    initialize() {
         this.goban = new Goban({
             "board_div": null,
-            "black_clock": this.black_clock,
-            "white_clock": this.white_clock,
             "draw_top_labels": false,
             "draw_bottom_labels": false,
             "draw_left_labels": false,
             "draw_right_labels": false,
-            "use_short_format_clock": false,
             "game_id": this.props.id,
             "square_size": "auto",
         });
@@ -82,10 +79,20 @@ export class GobanLineSummary extends React.Component<GobanLineSummaryProps, any
             "white_pause_text": new_text.white_pause_text,
             "black_pause_text": new_text.black_pause_text,
         }));
-    }}}
+
+        if (this.props.gobanref) {
+            this.props.gobanref(this.goban);
+        }
+    }
 
     destroy() {
-        this.goban.destroy();
+        if (this.goban) {
+            /* This is guarded because we hit this being called before
+             * initialize ran a few times, so I guess componentWillUnmount can
+             * be called without componentDidMount having been executed, or
+             * something else fuggly is going on. */
+            this.goban.destroy();
+        }
     }
 
     sync_state() {
@@ -116,62 +123,61 @@ export class GobanLineSummary extends React.Component<GobanLineSummaryProps, any
         });
     }
 
-    gotoGame = (ev) => {
-        navigateTo(`/game/${this.props.id}`, ev);
-    }
-
     render() {
         let player;
         let opponent;
-        let player_clock;
-        let opponent_clock;
+        let player_color:string;
+        let opponent_color:string;
+
         if (this.props.player && this.props.player.id === this.props.black.id) {
             player = this.props.black;
             opponent = this.props.white;
-            player_clock = this.black_clock;
-            opponent_clock = this.white_clock;
+            player_color = 'black';
+            opponent_color = 'white';
         }
+
         if (this.props.player && this.props.player.id === this.props.white.id) {
             player = this.props.white;
             opponent = this.props.black;
-            player_clock = this.white_clock;
-            opponent_clock = this.black_clock;
+            player_color = 'white';
+            opponent_color = 'black';
         }
+
         return (
-            <div className={ `GobanLineSummary `
+            <Link to={`/game/${this.props.id}`} className={ `GobanLineSummary `
                             + (this.state.current_users_move ? " current-users-move" : "")
                             + (this.state.in_stone_removal_phase ? " in-stone-removal-phase" : "")
                 }
-                 onClick={this.gotoGame}
                 >
                 <div className="move-number">{this.state.move_number}</div>
                 <div className="game-name">{this.state.game_name}</div>
 
-                {player && <div className="player"><Player user={opponent} rank /></div> }
+                {player && <div className="player"><Player user={opponent} fakelink rank /></div> }
                 {player &&
                     <div>
-                        <PersistentElement className={`clock ${this.state.paused}`} elt={player_clock} />
+                        <Clock goban={this.goban} color={player_color as 'black' | 'white'} />
                     </div>
                 }
                 {player &&
                     <div>
-                        <PersistentElement className={`clock ${this.state.paused}`} elt={opponent_clock} />
+                        <Clock goban={this.goban} color={opponent_color as 'black' | 'white'} />
                     </div>
                 }
 
-                {!player && <div className="player"><Player user={this.props.black} rank/></div> }
+                {!player && <div className="player"><Player user={this.props.black} fakelink rank/></div> }
                 {!player &&
                     <div>
-                        <PersistentElement className={`clock ${this.state.paused}`} elt={this.black_clock} />
+                        <Clock goban={this.goban} color='black' />
                     </div>
                 }
-                {!player && <div className="player"><Player user={this.props.white} rank/></div> }
+                {!player && <div className="player"><Player user={this.props.white} fakelink /></div> }
                 {!player &&
                     <div>
-                        <PersistentElement className={`clock ${this.state.paused}`} elt={this.white_clock} />
+                        <Clock goban={this.goban} color='white' />
                     </div>
                 }
-            </div>
+                <div className="size">{this.props.width + "x" + this.props.height}</div>
+            </Link>
         );
     }
 }

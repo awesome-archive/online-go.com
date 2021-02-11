@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2012-2017  Online-Go.com
+ * Copyright (C) 2012-2020  Online-Go.com
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU Affero General Public License as
@@ -16,8 +16,8 @@
  */
 
 import * as React from "react";
-import {Link} from "react-router";
-import data from "data";
+import {Link} from "react-router-dom";
+import * as data from "data";
 import * as moment from "moment";
 
 
@@ -31,7 +31,7 @@ export class TournamentIndicator extends React.PureComponent<{}, any> {
             tournament: null
         };
     }
-    componentWillMount() {
+    UNSAFE_componentWillMount() {
         data.watch("active-tournament", (tournament) => {
             this.setState({tournament: tournament});
             if (this.update_interval) {
@@ -70,4 +70,4 @@ export class TournamentIndicator extends React.PureComponent<{}, any> {
             </Link>
        );
     }
-};
+}

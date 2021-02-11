@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2012-2017  Online-Go.com
+ * Copyright (C) 2012-2020  Online-Go.com
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU Affero General Public License as
@@ -16,37 +16,62 @@
  */
 
 import * as React from "react";
-import {Link, browserHistory} from "react-router";
+import * as ReactDOM from "react-dom";
+import {Link} from "react-router-dom";
+import {browserHistory} from "ogsHistory";
 import {_, pgettext, interpolate} from "translate";
 import {abort_requests_in_flight, del, put, post, get} from "requests";
-import {ignore, errorAlerter, rankString, longRankString, rulesText, dup} from "misc";
+import {ignore, errorAlerter, rulesText, dup} from "misc";
+import {bounded_rank, longRankString, rankString, amateurRanks} from "rank_utils";
 import {handicapText} from "GameAcceptModal";
-import {timeControlDescription, computeAverageMoveTime} from "TimeControl";
+import {timeControlDescription} from "TimeControl";
 import {Markdown} from "Markdown";
-import {Player, setExtraActionCallback, makePlayerLink} from "Player";
+import {Player, setExtraActionCallback} from "Player";
 import * as moment from "moment";
-import * as Datetime from "react-datetime";
+import Datetime from "react-datetime";
 import {UIPush} from "UIPush";
-import {Card} from "components";
-import {EmbeddedChat} from "Chat";
-import data from "data";
+import {Card} from "material";
+import {EmbeddedChatCard} from "Chat";
+import * as data from "data";
 import {PaginatedTable} from "PaginatedTable";
 import {PersistentElement} from "PersistentElement";
 import {PlayerAutocomplete} from "PlayerAutocomplete";
 import {MiniGoban} from "MiniGoban";
-import player_cache from "player_cache";
+import * as player_cache from "player_cache";
 import {Steps} from "Steps";
 import {TimeControlPicker} from "TimeControl";
 import {close_all_popovers} from "popover";
-import {ranks} from "ChallengeModal";
+import {computeAverageMoveTime} from 'goban';
 import * as d3 from "d3";
-
 
 
 declare var swal;
 
+let logspam_debounce:any;
+
+let ranks = amateurRanks();
+
 interface TournamentProperties {
-    params: any;
+    match: {
+        params: any
+    };
+}
+
+function sortDropoutsToBottom(player_a, player_b) {
+    // Sorting the players structure from a group array
+    // "bottom" is greater than "top" of the display list.
+    let a = player_a.player;
+    let b = player_b.player;
+
+    if (a.notes !== 'Resigned' && a.notes !== 'Disqualified' &&
+        (b.notes === 'Resigned' || b.notes === 'Disqualified')) {
+        return -1;
+    }
+    if (b.notes !== 'Resigned' && b.notes !== 'Disqualified' &&
+        (a.notes === 'Resigned' || a.notes === 'Disqualified')) {
+        return 1;
+    }
+    return b.points - a.points;
 }
 
 /* TODO: Implement me TD Options */
@@ -64,13 +89,13 @@ export class Tournament extends React.PureComponent<TournamentProperties, any> {
     elimination_tree_container = $(`<div class="tournament-elimination-container">`);
     elimination_tree = $(`<svg xmlns="http://www.w3.org/2000/svg">`);
 
-    constructor(props) { /* {{{ */
+    constructor(props) {
         super(props);
 
-        let tournament_id = parseInt(this.props.params.tournament_id) || 0;
+        let tournament_id = parseInt(this.props.match.params.tournament_id) || 0;
 
         this.state = {
-            new_tournament_group_id: parseInt(this.props.params.group_id) || 0,
+            new_tournament_group_id: parseInt(this.props.match.params.group_id) || 0,
             tournament_id: tournament_id,
             loading: true,
             tournament: {
@@ -91,8 +116,8 @@ export class Tournament extends React.PureComponent<TournamentProperties, any> {
                     time_increment: 86400,
                 },
                 tournament_type: "mcmahon",
-                min_ranking: "0",
-                max_ranking: "36",
+                min_ranking: "5",
+                max_ranking: "38",
                 analysis_enabled: true,
                 exclude_provisional: true,
                 auto_start_on_max: false,
@@ -124,44 +149,42 @@ export class Tournament extends React.PureComponent<TournamentProperties, any> {
         };
 
         this.elimination_tree_container.append(this.elimination_tree);
-    } /* }}} */
-
-    componentWillMount() {{{
+    }
+    componentDidMount() {
         setExtraActionCallback(this.renderExtraPlayerActions);
-    }}}
-    componentDidMount() {{{
+        window.document.title = _("Tournament");
         if (this.state.tournament_id) {
             this.resolve(this.state.tournament_id);
         }
         if (this.state.new_tournament_group_id) {
-            get(`groups/${this.state.new_tournament_group_id}`)
+            get("groups/%%", this.state.new_tournament_group_id)
             .then((group) => {
                 this.setState({tournament: Object.assign({}, this.state.tournament, {group: group})});
             })
             .catch(errorAlerter);
         }
-    }}}
-    componentWillUnmount() {{{
+    }
+    componentWillUnmount() {
         this.abort_requests();
         setExtraActionCallback(null);
-    }}}
-    componentWillReceiveProps(next_props) {{{
-        if (next_props.params.tournament_id !== this.props.params.tournament_id) {
-            this.setState({tournament_id: parseInt(next_props.params.tournament_id)});
-            this.resolve(parseInt(next_props.params.tournament_id));
+    }
+    UNSAFE_componentWillReceiveProps(next_props) {
+        if (next_props.match.params.tournament_id !== this.props.match.params.tournament_id) {
+            this.setState({tournament_id: parseInt(next_props.match.params.tournament_id)});
+            this.resolve(parseInt(next_props.match.params.tournament_id));
         }
-    }}}
-    abort_requests() {{{
+    }
+    abort_requests() {
         abort_requests_in_flight(`tournaments/${this.state.tournament_id}`);
         abort_requests_in_flight(`tournaments/${this.state.tournament_id}/rounds`);
         abort_requests_in_flight(`tournaments/${this.state.tournament_id}/players/all`);
-    }}}
-    resolve(tournament_id: number) {{{
+    }
+    resolve(tournament_id: number) {
         this.abort_requests();
 
         Promise.all([
-            get(`tournaments/${tournament_id}`),
-            get(`tournaments/${tournament_id}/rounds`),
+            get("tournaments/%%", tournament_id),
+            get("tournaments/%%/rounds", tournament_id),
             this.refreshPlayerList(tournament_id),
         ])
         .then((res) => {
@@ -169,6 +192,8 @@ export class Tournament extends React.PureComponent<TournamentProperties, any> {
             let rounds = res[1];
             let raw_rounds = res[1];
             let players = res[2];
+
+            window.document.title = tournament.name;
 
             while (rounds.length && rounds[rounds.length - 1].matches.length === 0) {
                 rounds.pop(); /* account for server bugs that can create empty last rounds */
@@ -193,17 +218,17 @@ export class Tournament extends React.PureComponent<TournamentProperties, any> {
             });
         })
         .catch(errorAlerter);
-    }}}
-    reloadTournament = () => {{{
+    }
+    reloadTournament = () => {
         this.resolve(this.state.tournament_id);
-    }}}
-    refreshPlayerList = (tournament_id?) => {{{
+    }
+    refreshPlayerList = (tournament_id?) => {
         if (typeof(tournament_id) !== "number") {
             tournament_id = this.state.tournament_id;
         }
         let user = data.get("user");
 
-        let ret = get(`tournaments/${tournament_id}/players/all`);
+        let ret = get("tournaments/%%/players/all", tournament_id);
         ret
         .then((players) => {
             for (let id in players) {
@@ -246,8 +271,8 @@ export class Tournament extends React.PureComponent<TournamentProperties, any> {
         })
         .catch(errorAlerter);
         return ret;
-    }}}
-    linkPlayersToRoundMatches(rounds, players) {{{
+    }
+    linkPlayersToRoundMatches(rounds, players) {
         for (let round of rounds) {
             if (!round.groupify) {
                 for (let match of round.matches) {
@@ -255,8 +280,8 @@ export class Tournament extends React.PureComponent<TournamentProperties, any> {
                 }
             }
         }
-    }}}
-    compareUserRank = (a, b) => { /* {{{ */
+    }
+    compareUserRank = (a, b) => {
         if (!a && !b) { return 0; }
         if (!a) { return -1; }
         if (!b) { return 1; }
@@ -275,7 +300,7 @@ export class Tournament extends React.PureComponent<TournamentProperties, any> {
         if (pa.username < pb.username) { return 1; }
         if (pa.username > pb.username) { return -1; }
         return 0;
-    } /* }}} */
+    }
 
     startTournament = () => {
         swal({
@@ -284,7 +309,7 @@ export class Tournament extends React.PureComponent<TournamentProperties, any> {
             focusCancel: true
         })
         .then(() => {
-            post("tournaments/" + this.state.tournament.id + "/start", {})
+            post("tournaments/%%/start", this.state.tournament.id, {})
             .then(ignore)
             .catch(errorAlerter);
         })
@@ -297,7 +322,7 @@ export class Tournament extends React.PureComponent<TournamentProperties, any> {
             focusCancel: true
         })
         .then(() => {
-            del("tournaments/" + this.state.tournament.id)
+            del("tournaments/%%", this.state.tournament.id)
             .then(() => {
                 browserHistory.push("/");
             })
@@ -305,11 +330,11 @@ export class Tournament extends React.PureComponent<TournamentProperties, any> {
         })
         .catch(ignore);
     }
-    setUserToInvite = (user) => {{{
+    setUserToInvite = (user) => {
         this.setState({user_to_invite: user});
-    }}}
-    inviteUser = () => {{{
-        post(`tournaments/${this.state.tournament_id}/players`, {"username": this.state.user_to_invite.username })
+    }
+    inviteUser = () => {
+        post("tournaments/%%/players", this.state.tournament_id, {"username": this.state.user_to_invite.username })
         .then((res) => {
             console.log(res);
             _("Player invited"); /* for translations */
@@ -325,22 +350,22 @@ export class Tournament extends React.PureComponent<TournamentProperties, any> {
                 console.error(e);
             }
         });
-    }}}
-    joinTournament = () => {{{
-        post(`tournaments/${this.state.tournament_id}/players`, {})
+    }
+    joinTournament = () => {
+        post("tournaments/%%/players", this.state.tournament_id, {})
         .then((res) => {
             this.setState({is_joined: true});
         })
         .catch(errorAlerter);
-    }}}
-    partTournament = () => {{{
-        post(`tournaments/${this.state.tournament_id}/players`, {"delete": true})
+    }
+    partTournament = () => {
+        post("tournaments/%%/players", this.state.tournament_id, {"delete": true})
         .then((res) => {
             this.setState({is_joined: false});
         })
         .catch(errorAlerter);
-    }}}
-    resign = () => {{{
+    }
+    resign = () => {
         swal({
             text: _("Are you sure you want to resign from the tournament? This will also resign you from all games you are playing in this tournament."),
             showCancelButton: true,
@@ -348,8 +373,8 @@ export class Tournament extends React.PureComponent<TournamentProperties, any> {
         })
         .then(this.partTournament)
         .catch(errorAlerter);
-    }}}
-    updateEliminationTrees() {{{
+    }
+    updateEliminationTrees() {
         let tournament = this.state.tournament;
         let rounds = this.state.rounds;
         let players = this.state.players;
@@ -376,7 +401,18 @@ export class Tournament extends React.PureComponent<TournamentProperties, any> {
             let h = em2_5 + minspace;
             let w = namewidth + $("#em10").width() * 4.0 / 10.0;
 
-            let bindHovers = (div, id) => { /* {{{ */
+            let bindHovers = (div, id) => {
+                if (typeof(id) !== 'number') {
+                    try {
+                        console.warn("ID = ", id);
+                        for (let k in id) {
+                            console.warn("ID.", k, '=', id[k]);
+                        }
+                    } catch (e) {
+                    }
+                    console.error('Tournament bind hover called with non numeric id');
+                }
+
                 div.mouseover(() => {
                     $(".elimination-player-hover").removeClass("elimination-player-hover");
                     $(".elimination-player-" + id).addClass("elimination-player-hover");
@@ -384,18 +420,21 @@ export class Tournament extends React.PureComponent<TournamentProperties, any> {
                 div.mouseout(() => {
                     $(".elimination-player-hover").removeClass("elimination-player-hover");
                 });
-            }; /* }}} */
+            };
 
             let all_objects = [];
-            for (let round_num = 0; round_num < rounds.length; ++round_num) { /* {{{ */
+            for (let round_num = 0; round_num < rounds.length; ++round_num) {
                 let round = rounds[round_num];
 
                 for (let match_num = 0; match_num < round.matches.length; ++match_num) {
                     let match = round.matches[match_num];
                     let matchdiv = $("<div>").addClass("matchdiv");
 
-                    let black = $("<div>").addClass("black").addClass("elimination-player-" + match.black).append(makePlayerLink(["icon", "name", "rank"], players[match.black]));
-                    let white = $("<div>").addClass("white").addClass("elimination-player-" + match.white).append(makePlayerLink(["icon", "name", "rank"], players[match.white]));
+                    let black = $("<div>").addClass("black").addClass("elimination-player-" + match.black);
+                    let white = $("<div>").addClass("white").addClass("elimination-player-" + match.white);
+                    ReactDOM.render((<Player user={players[match.black]} icon rank />), black[0]);
+                    ReactDOM.render((<Player user={players[match.white]} icon rank />), white[0]);
+
 
                     black.prepend($("<a class='elimination-game'><i class='ogs-goban'></i> </a>").attr("href", "/game/view/" + match.gameid));
                     white.prepend($("<a class='elimination-game'><i class='ogs-goban'></i> </a>").attr("href", "/game/view/" + match.gameid));
@@ -403,8 +442,9 @@ export class Tournament extends React.PureComponent<TournamentProperties, any> {
                     bindHovers(black, match.black);
                     bindHovers(white, match.white);
 
-                    if (match.result[0] === "B") { black.addClass("win"); }
-                    if (match.result[0] === "W") { white.addClass("win"); }
+                    let result = match.result && match.result.length > 0 ? match.result[0] : '';
+                    if (result === "B") { black.addClass("win"); }
+                    if (result === "W") { white.addClass("win"); }
 
                     matchdiv.append(black);
                     matchdiv.append(white);
@@ -413,7 +453,7 @@ export class Tournament extends React.PureComponent<TournamentProperties, any> {
                         div: matchdiv,
                         black_src: round_num > 0 ? lastbucket[match.black] : null,
                         white_src: round_num > 0 ? lastbucket[match.white] : null,
-                        black_won: match.result[0] === "B",
+                        black_won: result === "B",
                         match: match,
                         second_bracket: false,
                         round: round_num,
@@ -436,7 +476,8 @@ export class Tournament extends React.PureComponent<TournamentProperties, any> {
                 for (let bye_num = 0; bye_num < round.byes.length; ++bye_num) {
                     let bye = round.byes[bye_num];
                     let byediv = $("<div>").addClass("byediv");
-                    let byee = $("<div>").addClass("bye").addClass("elimination-player-" + bye).append(makePlayerLink(["icon", "name", "rank"], players[bye]));
+                    let byee = $("<div>").addClass("bye").addClass("elimination-player-" + bye);
+                    ReactDOM.render((<Player user={players[bye]} icon rank />), byee[0]);
                     bindHovers(byee, bye);
                     byediv.append(byee);
                     let obj = {
@@ -461,14 +502,17 @@ export class Tournament extends React.PureComponent<TournamentProperties, any> {
                 }
                 lastcurbucket = curbucket;
                 curbucket = {};
-            } /* }}} */
+            }
 
             let lastcurbucket_arr = [];
             for (let k in lastcurbucket) { lastcurbucket_arr.push(lastcurbucket[k]); }
 
-            let playerWon = (obj, player_id) => { /* {{{ */
+            let playerWon = (obj, player_id) => {
                 if (!obj.match) {
                     return true;
+                }
+                if (!obj.match.result) {
+                    return false;
                 }
                 if (obj.match.result[0] === "B" && obj.match.black === player_id) {
                     return true;
@@ -477,9 +521,9 @@ export class Tournament extends React.PureComponent<TournamentProperties, any> {
                     return true;
                 }
                 return false;
-            }; /* }}} */
+            };
 
-            for (let i = 0; i < all_objects.length; ++i) { /* {{{ */
+            for (let i = 0; i < all_objects.length; ++i) {
                 let obj = all_objects[i];
                 if (obj.round === 0) { continue; }
                 if (obj.bye_src) {
@@ -502,14 +546,14 @@ export class Tournament extends React.PureComponent<TournamentProperties, any> {
                 if (obj.second_bracket) {
                     //obj.div.css({"background-color": "red", "opacity": 0.5});
                 }
-            } /* }}} */
+            }
 
 
             let svg_extents = {x: 0, y: 0};
 
             let last_visit_order = 0;
-            let layout = (collection) => { /* {{{ */
-                let computeVisitOrder = (obj) => { /* {{{ */
+            let layout = (collection) => {
+                let computeVisitOrder = (obj) => {
                     if (obj.visit_order) { return; }
 
                     if (!obj.second_bracket && obj.black_src && obj.black_src.second_bracket) {
@@ -525,7 +569,7 @@ export class Tournament extends React.PureComponent<TournamentProperties, any> {
 
                     obj.visit_order = ++last_visit_order;
 
-                }; /* }}} */
+                };
 
                 let arr = [];
                 for (let k in collection) {
@@ -537,9 +581,17 @@ export class Tournament extends React.PureComponent<TournamentProperties, any> {
                         return d;
                     }
 
-                    let arank = a.player_id ? players[a.player_id].ranking * 2 : players[a.match.black].ranking + players[a.match.white].ranking;
-                    let brank = b.player_id ? players[b.player_id].ranking * 2 : players[b.match.black].ranking + players[b.match.white].ranking;
-                    return -(arank - brank);
+                    const compute_rank = (e) => {
+                        if (e.player_id && e.player_id in players) {
+                            return players[e.player_id].ranking * 2;
+                        }
+                        if (e.match && e.match.black && e.match.white && e.match.black in players && e.match.white in players) {
+                            return players[e.match.black].ranking + players[e.match.white].ranking;
+                        }
+                        return -1000;
+                    };
+
+                    return -(compute_rank(a) - compute_rank(b));
                 });
 
 
@@ -578,7 +630,7 @@ export class Tournament extends React.PureComponent<TournamentProperties, any> {
 
 
                 //computeVisitOrder(obj);
-                all_objects.sort((a, b) => { /* {{{ */
+                all_objects.sort((a, b) => {
                     if (!a.visit_order) { a.visit_order = ++last_visit_order; }
                     if (!b.visit_order) { b.visit_order = ++last_visit_order; }
 
@@ -589,7 +641,7 @@ export class Tournament extends React.PureComponent<TournamentProperties, any> {
                         return (a.round - b.round);
                     }
                     return (a.visit_order - b.visit_order);
-                }); /* }}} */
+                });
 
 
                 let y = {0: 0};
@@ -656,7 +708,7 @@ export class Tournament extends React.PureComponent<TournamentProperties, any> {
                         base_y = Math.max(base_y, obj.bottom + h + 10);
                     }
                 }
-            }; /* }}} */
+            };
 
             //for (let k in lastcurbucket) {
                 layout(lastcurbucket);
@@ -682,7 +734,7 @@ export class Tournament extends React.PureComponent<TournamentProperties, any> {
             //let line_style = "step-before";
             let line_style = "monotone";
 
-            let drawLine = (path) => { /* {{{ */
+            let drawLine = (path) => {
                 let line_function = d3.line()
                                         .curve(d3.curveMonotoneX)
                                         .x((xy: any) => xy.x)
@@ -693,19 +745,19 @@ export class Tournament extends React.PureComponent<TournamentProperties, any> {
                     .attr("stroke", "#888")
                     .attr("stroke-width", 1.0)
                     .attr("fill", "none");
-            }; /* }}} */
+            };
 
             let bottom_padding = 3.0;
             let left_padding = 5.0;
 
-            let getWinnerBottom = (obj) => { /* {{{ */
+            let getWinnerBottom = (obj) => {
                 if (obj.black_won) {
                     return Math.round((obj.top + obj.bottom) / 2.0);
                 }
                 return Math.round(obj.bottom + bottom_padding);
-            }; /* }}} */
+            };
 
-            let drawLines = (obj) => { /* {{{ */
+            let drawLines = (obj) => {
                 if (obj.black_src) {
                     drawLines(obj.black_src);
                     if (!obj.second_bracket || obj.second_bracket === obj.black_src.second_bracket) {
@@ -738,15 +790,15 @@ export class Tournament extends React.PureComponent<TournamentProperties, any> {
                         ]);
                     }
                 }
-            }; /* }}} */
+            };
 
             for (let k in lastcurbucket) {
                 //drawLines(lastcurbucket[k], rounds.length-1);
                 drawLines(lastcurbucket[k]);
             }
         }
-    }}}
-    groupify(round, players) { /* {{{ */
+    }
+    groupify(round, players) {
         try {
         let match_map = {};
         let result_map = {};
@@ -875,10 +927,10 @@ export class Tournament extends React.PureComponent<TournamentProperties, any> {
         } catch (e) {
             setTimeout(() => {throw e; }, 1);
         }
-    } /* }}} */
-    setSelectedRound = (selected_round: number) => {{{
+    }
+    setSelectedRound = (selected_round: number) => {
         this.setState({selected_round: selected_round});
-    }}}
+    }
 
     startEditing = () => this.setState({editing: true});
     save = () => {
@@ -925,7 +977,7 @@ export class Tournament extends React.PureComponent<TournamentProperties, any> {
             .then(() => this.resolve(this.state.tournament_id))
             .catch(errorAlerter);
         } else {
-            post(`tournaments/`, tournament)
+            post("tournaments/", tournament)
             .then((res) => browserHistory.push(`/tournament/${res.id}`))
             .catch(errorAlerter);
         }
@@ -933,49 +985,53 @@ export class Tournament extends React.PureComponent<TournamentProperties, any> {
 
         this.setState({editing: false});
     }
-    setTournamentName = (ev) => this.setState({tournament: Object.assign({}, this.state.tournament, {name: ev.target.value})});
-    setStartTime = (t) => this.setState({tournament: Object.assign({}, this.state.tournament, {time_start: t.format()})});
-    setTournamentType = (ev) => this.setState({tournament: Object.assign({}, this.state.tournament, {tournament_type: ev.target.value})});
-    setLowerBar = (ev) => {
+    setTournamentName  = (ev) => this.setState({tournament: Object.assign({}, this.state.tournament, {name: ev.target.value})});
+    setStartTime       = (t)  => {
+        if (t && t.format) {
+            this.setState({tournament: Object.assign({}, this.state.tournament, {time_start: t.format()})});
+        }
+    }
+    setTournamentType  = (ev) => this.setState({tournament: Object.assign({}, this.state.tournament, {tournament_type: ev.target.value})});
+    setLowerBar        = (ev) => {
         let newSettings = Object.assign({}, this.state.tournament.settings, {lower_bar: ev.target.value});
         this.setState({tournament: Object.assign({}, this.state.tournament, {settings: newSettings})});
     }
-    setUpperBar = (ev) => {
+    setUpperBar        = (ev) => {
         let newSettings = Object.assign({}, this.state.tournament.settings, {upper_bar: ev.target.value});
         this.setState({tournament: Object.assign({}, this.state.tournament, {settings: newSettings})});
     }
-    setPlayersStart = (ev) => this.setState({tournament: Object.assign({}, this.state.tournament, {players_start: ev.target.value})});
-    setMaximumPlayers = (ev) => {
+    setPlayersStart    = (ev) => this.setState({tournament: Object.assign({}, this.state.tournament, {players_start: ev.target.value})});
+    setMaximumPlayers  = (ev) => {
         let newSettings = Object.assign({}, this.state.tournament.settings, {maximum_players: ev.target.value});
         this.setState({tournament: Object.assign({}, this.state.tournament, {settings: newSettings})});
     }
-    setAutoStartOnMax = (ev) => this.setState({tournament: Object.assign({}, this.state.tournament, {auto_start_on_max: ev.target.checked})});
-    setFirstPairingMethod = (ev) => this.setState({tournament: Object.assign({}, this.state.tournament, {first_pairing_method: ev.target.value})});
+    setAutoStartOnMax          = (ev) => this.setState({tournament: Object.assign({}, this.state.tournament, {auto_start_on_max: ev.target.checked})});
+    setFirstPairingMethod      = (ev) => this.setState({tournament: Object.assign({}, this.state.tournament, {first_pairing_method: ev.target.value})});
     setSubsequentPairingMethod = (ev) => this.setState({tournament: Object.assign({}, this.state.tournament, {subsequent_pairing_method: ev.target.value})});
-    setTournamentExclusivity = (ev) => this.setState({tournament: Object.assign({}, this.state.tournament, {exclusivity: ev.target.value})});
+    setTournamentExclusivity   = (ev) => this.setState({tournament: Object.assign({}, this.state.tournament, {exclusivity: ev.target.value})});
 
-    setNumberOfRounds = (ev) => {
+    setNumberOfRounds  = (ev) => {
         let newSettings = Object.assign({}, this.state.tournament.settings, {num_rounds: ev.target.value});
         this.setState({tournament: Object.assign({}, this.state.tournament, {settings: newSettings})});
     }
-    setGroupSize = (ev) => {
+    setGroupSize       = (ev) => {
         let newSettings = Object.assign({}, this.state.tournament.settings, {group_size: ev.target.value});
         this.setState({tournament: Object.assign({}, this.state.tournament, {settings: newSettings})});
     }
-    setRules = (ev) => this.setState({tournament: Object.assign({}, this.state.tournament, {rules: ev.target.value})});
-    setHandicap = (ev) => this.setState({tournament: Object.assign({}, this.state.tournament, {handicap: ev.target.value})});
-    setBoardSize = (ev) => this.setState({tournament: Object.assign({}, this.state.tournament, {board_size: ev.target.value})});
+    setRules           = (ev) => this.setState({tournament: Object.assign({}, this.state.tournament, {rules: ev.target.value})});
+    setHandicap        = (ev) => this.setState({tournament: Object.assign({}, this.state.tournament, {handicap: ev.target.value})});
+    setBoardSize       = (ev) => this.setState({tournament: Object.assign({}, this.state.tournament, {board_size: ev.target.value})});
     setAnalysisEnabled = (ev) => this.setState({tournament: Object.assign({}, this.state.tournament, {analysis_enabled: ev.target.checked})});
-    setMinRank = (ev) => this.setState({tournament: Object.assign({}, this.state.tournament, {min_ranking: ev.target.value})});
-    setMaxRank = (ev) => this.setState({tournament: Object.assign({}, this.state.tournament, {max_ranking: ev.target.value})});
+    setMinRank         = (ev) => this.setState({tournament: Object.assign({}, this.state.tournament, {min_ranking: ev.target.value})});
+    setMaxRank         = (ev) => this.setState({tournament: Object.assign({}, this.state.tournament, {max_ranking: ev.target.value})});
     setExcludeProvisionalPlayers = (ev) => this.setState({tournament: Object.assign({}, this.state.tournament, {exclude_provisional: !ev.target.checked})});
-    setDescription = (ev) => this.setState({tournament: Object.assign({}, this.state.tournament, {description: ev.target.value})});
-    setTimeControl = (tc) => {
+    setDescription     = (ev) => this.setState({tournament: Object.assign({}, this.state.tournament, {description: ev.target.value})});
+    setTimeControl     = (tc) => {
         console.log(tc);
         this.setState({tournament: Object.assign({}, this.state.tournament, {time_control_parameters: tc})});
     }
 
-    render() {{{
+    render() {
         try {
         let editing = this.state.editing;
         let loading = this.state.loading;
@@ -1050,7 +1106,7 @@ export class Tournament extends React.PureComponent<TournamentProperties, any> {
         let can_join = true;
         let cant_join_reason = "";
 
-        if (data.get("user").anonymous) {
+        if (user.anonymous) {
             can_join = false;
             cant_join_reason = _("You must sign in to join this tournament.");
         } else if (tournament.exclusivity === "group" && !tournament.player_is_member_of_group) {
@@ -1059,10 +1115,17 @@ export class Tournament extends React.PureComponent<TournamentProperties, any> {
         } else if (!tournament.is_open || tournament.exclusivity === "invite") {
             can_join = false;
             cant_join_reason = _("This is a closed tournament, you must be invited to join.");
-        } else if (tournament.exclude_provisional && data.get("user").provisional > 0) {
+        } else if (tournament.exclude_provisional && user.provisional > 0) {
             can_join = false;
             cant_join_reason = _("This tournament is closed to provisional players. You need to establish your rank by playing ranked games before you can join this tournament.");
+        } else if (bounded_rank(user) < tournament.min_ranking) {
+            can_join = false;
+            cant_join_reason = _("Your rank is too low to join this tournament.");
+        } else if (bounded_rank(user) > tournament.max_ranking) {
+            can_join = false;
+            cant_join_reason = _("Your rank is too high to join this tournament");
         }
+
 
         let time_per_move = computeAverageMoveTime(tournament.time_control_parameters);
 
@@ -1074,14 +1137,14 @@ export class Tournament extends React.PureComponent<TournamentProperties, any> {
 
 
         return (
-        <div className="Tournament">
+        <div className="Tournament page-width">
             <UIPush event="players-updated" channel={`tournament-${this.state.tournament_id}`} action={this.reloadTournament}/>
             <UIPush event="reload-tournament" channel={`tournament-${this.state.tournament_id}`} action={this.reloadTournament}/>
 
-            <div className="top-details">{/* {{{ */}
+            <div className="top-details">
                 <div >
                     {!editing
-                        ? <h2>{tournament.name}</h2>
+                        ? <h2><i className="fa fa-trophy"></i> {tournament.name}</h2>
                         : <input ref="tournament_name" className="fill big" value={tournament.name} placeholder={_("Tournament Name")} onChange={this.setTournamentName} />
                     }
                     {!editing && !loading &&
@@ -1386,7 +1449,7 @@ export class Tournament extends React.PureComponent<TournamentProperties, any> {
                 </div>
 
             </div>
-            {/* }}} */}
+
 
             {editing &&
                 <div style={{textAlign: "center", "marginTop": "3rem"}}>
@@ -1398,9 +1461,9 @@ export class Tournament extends React.PureComponent<TournamentProperties, any> {
 
 
 
-            {!loading && !tournament.started && /* {{{ */
+            {!loading && !tournament.started &&
                 <div className={"bottom-details not-started"}>
-                    <EmbeddedChat channel={`tournament-${this.state.tournament_id}`} updateTitle={false} />
+                    <EmbeddedChatCard channel={`tournament-${this.state.tournament_id}`} updateTitle={false} />
 
                     {(!tournament.start_waiting || null) &&
                         <div className="signup-area" style={{textAlign: "center"}}>
@@ -1462,10 +1525,10 @@ export class Tournament extends React.PureComponent<TournamentProperties, any> {
                     </div>
                 </div>
             }
-            {/* }}} */}
-            {!loading && tournament.started && /* {{{ */
+
+            {!loading && tournament.started &&
                 <div className="bottom-details">
-                    <EmbeddedChat channel={`tournament-${this.state.tournament_id}`} updateTitle={false} />
+                    <EmbeddedChatCard channel={`tournament-${this.state.tournament_id}`} updateTitle={false} />
 
                     <div className="results">
                     {this.state.use_elimination_trees ? <PersistentElement elt={this.elimination_tree_container[0]}/> :
@@ -1480,19 +1543,28 @@ export class Tournament extends React.PureComponent<TournamentProperties, any> {
                                     />
                             }
 
+                            {(!selected_round && tournament.group && tournament.group.hide_details) &&
+                                <div className='hide-details-note'>
+                                    {_("This tournament is part of a group that hides group activity and details, as such you must be a member of the group to see the tournament results.")}
+                                </div>
+                            }
 
 
                             {/* Round robin / simul style groups */}
                             {(selected_round && selected_round.groupify || null) &&
                                 <div>
-                                    {selected_round.groups.map((group, idx) => (
-                                        <div key={idx} className="round-group">
+                                    {selected_round.groups.map((group, idx) => {
+                                        // (if we had ramda library, we'd use that non-mutating sort instead of this funky spread-copy...)
+                                        let sorted_players = [...group.players].sort(sortDropoutsToBottom);
+
+                                        return (
+                                            <div key={idx} className="round-group">
                                             <table>
                                                 <tbody>
                                                     <tr>
                                                         {(tournament.ended || null) && <th className="rank">{_("Rank")}</th>}
                                                         <th>{_("Player")}</th>
-                                                        {group.players.map((opponent, idx) => (
+                                                        {sorted_players.map((opponent, idx) => (
                                                             <th key={idx} className="rotated-title">
                                                                 {(opponent.player || null) && <span className="rotated"><Player user={opponent.player} icon></Player></span>}
                                                             </th>
@@ -1502,14 +1574,14 @@ export class Tournament extends React.PureComponent<TournamentProperties, any> {
                                                         {(tournament.ended || null) && <th className="rotated-title"><span className="rotated">&Sigma; {_("Defeated Scores")}</span></th>}
                                                         <th></th>
                                                     </tr>
-                                                    {group.players.map((player, idx) => {
+                                                    {sorted_players.map((player, idx) => {
                                                         player = player.player;
                                                         return (
                                                         <tr key={idx} >
                                                             {(tournament.ended || null) && <td className="rank">{player.rank}</td>}
 
                                                             <th className="player"><Player user={player} icon /></th>
-                                                            {group.players.map((opponent, idx) => (
+                                                            {sorted_players.map((opponent, idx) => (
                                                                 <td key={idx} className={"result " + selected_round.colors[player.id + "x" + opponent.id]}>
                                                                     <Link to={`/game/${selected_round.game_ids[player.id + "x" + opponent.id]}`}>
                                                                         {selected_round.results[player.id + "x" + opponent.id]}
@@ -1526,10 +1598,10 @@ export class Tournament extends React.PureComponent<TournamentProperties, any> {
                                                 </tbody>
                                             </table>
                                         </div>
-                                    ))}
+                                        );
+                                    })}
                                 </div>
                             }
-
 
                             {/* Pair matches */}
                             {((selected_round && !selected_round.groupify && tournament.tournament_type !== "s_title") || null) &&
@@ -1549,12 +1621,17 @@ export class Tournament extends React.PureComponent<TournamentProperties, any> {
                                         {selected_round.matches.map((m, idx) => {
                                             let pxo = (m.player && m.opponent && (`${m.player.id}x${m.opponent.id}`)) || "error-invalid-player-or-opponent";
                                             if (pxo === "error-invalid-player-or-opponent") {
-                                                console.error("invalid player or opponent", m, selected_round.matches, selected_round);
+                                                if (!logspam_debounce) {
+                                                    logspam_debounce = setTimeout(() => {
+                                                        console.error("invalid player or opponent", m, selected_round.matches, selected_round);
+                                                        logspam_debounce = undefined;
+                                                    }, 10);
+                                                }
                                             }
 
                                             return (
                                             <tr key={idx} >
-                                                {(tournament.ended || null) && <td className="rank">{m.player.rank}</td>}
+                                                {(tournament.ended || null) && <td className="rank">{m.player?.rank}</td>}
                                                 {(m.player || null) && <td className="player"><Player user={m.player} icon/></td>}
                                                 {(m.opponent || null) && <td className="player"><Player user={m.opponent} icon/></td>}
 
@@ -1564,10 +1641,10 @@ export class Tournament extends React.PureComponent<TournamentProperties, any> {
                                                     </Link>
                                                 </td>
 
-                                                <td className="points">{m.player.points}</td>
-                                                {(tournament.ended || null) && <td className="points">{m.player.sos}</td>}
-                                                {(tournament.ended || null) && <td className="points">{m.player.sodos}</td>}
-                                                <td className="notes">{m.player.notes}</td>
+                                                <td className="points">{m.player && m.player.points}</td>
+                                                {(tournament.ended || null) && <td className="points">{m.player && m.player.sos}</td>}
+                                                {(tournament.ended || null) && <td className="points">{m.player && m.player.sodos}</td>}
+                                                <td className="notes">{m.player && m.player.notes}</td>
                                             </tr>
                                             );
                                         })}
@@ -1633,12 +1710,15 @@ export class Tournament extends React.PureComponent<TournamentProperties, any> {
                                             <th></th>
                                         </tr>
                                         {selected_round.byes.map((player, idx) => {
+                                            if (!player) {
+                                                return <tr key={idx} />;
+                                            }
                                             return (
                                             <tr key={idx} >
                                                 {(tournament.ended || null) && <td className="rank">{player.rank}</td>}
-                                                {(player || null) && <td className="player"><Player user={player} icon/></td>}
+                                                <td className="player"><Player user={player} icon/></td>
                                                 <td className="points">{player.points}</td>
-                                                {(tournament.ended || null) && <td className="points">{player.sos}</td>}
+                                                {((player && tournament.ended) || null) && <td className="points">{player.sos}</td>}
                                                 {(tournament.ended || null) && <td className="points">{player.sodos}</td>}
                                                 <td className="notes">{player.notes}</td>
                                             </tr>
@@ -1681,7 +1761,7 @@ export class Tournament extends React.PureComponent<TournamentProperties, any> {
                     </div>
                 </div>
             }
-            {/* }}} */}
+
 
         </div>
         );
@@ -1690,9 +1770,9 @@ export class Tournament extends React.PureComponent<TournamentProperties, any> {
             setTimeout(() => {throw e; }, 1);
             return null;
         }
-    }}}
+    }
 
-    kick(player_id: number) {{{
+    kick(player_id: number) {
         let user = player_cache.lookup(player_id);
 
         swal({
@@ -1701,7 +1781,7 @@ export class Tournament extends React.PureComponent<TournamentProperties, any> {
             focusCancel: true
         })
         .then((val) => {
-            post(`tournaments/${this.state.tournament.id}/players`, {
+            post("tournaments/%%/players", this.state.tournament.id, {
                 "delete": true,
                 "player_id": user.id,
             })
@@ -1711,8 +1791,8 @@ export class Tournament extends React.PureComponent<TournamentProperties, any> {
         .catch(ignore);
 
         close_all_popovers();
-    }}}
-    adjustPoints(player_id: number) {{{
+    }
+    adjustPoints(player_id: number) {
         let user = player_cache.lookup(player_id);
 
         swal({
@@ -1730,7 +1810,7 @@ export class Tournament extends React.PureComponent<TournamentProperties, any> {
             let adjustments = {};
             adjustments[user.id] = v;
 
-            put(`tournaments/${this.state.tournament.id}/players`, {
+            put("tournaments/%%/players", this.state.tournament.id, {
                 adjust: adjustments
             })
             .then(ignore)
@@ -1738,8 +1818,8 @@ export class Tournament extends React.PureComponent<TournamentProperties, any> {
         })
         .catch(ignore);
         close_all_popovers();
-    }}}
-    disqualify(player_id: number) {{{
+    }
+    disqualify(player_id: number) {
         let user = player_cache.lookup(player_id);
 
         swal({
@@ -1748,7 +1828,7 @@ export class Tournament extends React.PureComponent<TournamentProperties, any> {
             focusCancel: true
         })
         .then((val) => {
-            put(`tournaments/${this.state.tournament.id}/players`, {
+            put("tournaments/%%/players", this.state.tournament.id, {
                 disqualify: user.id,
             })
             .then(ignore)
@@ -1757,10 +1837,10 @@ export class Tournament extends React.PureComponent<TournamentProperties, any> {
         .catch(ignore);
 
         close_all_popovers();
-    }}}
+    }
 
 
-    renderExtraPlayerActions = (player_id: number, user: any) => {{{
+    renderExtraPlayerActions = (player_id: number, ignored: any) => {
         let user = data.get("user");
         if (!(user.is_tournament_moderator || (this.state.tournament.director && this.state.tournament.director.id === user.id))) {
             return null;
@@ -1781,13 +1861,12 @@ export class Tournament extends React.PureComponent<TournamentProperties, any> {
                 </div>
             );
         }
-    }}}
+    }
 
 }
 
 
-
-export function rankRestrictionText(min_ranking, max_ranking) {{{
+export function rankRestrictionText(min_ranking, max_ranking) {
     if (min_ranking <= 0) {
         if (max_ranking >= 36) {
             return _("None");
@@ -1801,8 +1880,8 @@ export function rankRestrictionText(min_ranking, max_ranking) {{{
             return interpolate(pgettext("ranks restriction: '<rank> - <rank>'", "%s - %s"), [longRankString(min_ranking), longRankString(max_ranking)]);
         }
     }
-}}}
-export function shortRankRestrictionText(min_ranking, max_ranking) {{{
+}
+export function shortRankRestrictionText(min_ranking, max_ranking) {
     if (min_ranking <= 0) {
         if (max_ranking >= 36) {
             return _("All");
@@ -1816,23 +1895,23 @@ export function shortRankRestrictionText(min_ranking, max_ranking) {{{
             return interpolate(pgettext("ranks restriction: '<rank> - <rank>'", "%s-%s"), [rankString(min_ranking), rankString(max_ranking)]);
         }
     }
-}}}
-export const TOURNAMENT_TYPE_NAMES = { /* {{{ */
+}
+export const TOURNAMENT_TYPE_NAMES = {
     "s_mcmahon": _("Simultaneous McMahon"),
     "mcmahon": _("McMahon"),
     "roundrobin": _("Round Robin"),
-    "s_elimination": _("Simultaneous Eliminination"),
+    "s_elimination": _("Simultaneous Elimination"),
     "s_title": _("Title Tournament"),
     "swiss": _("Swiss"),
-    "elimination": _("Single Eliminination"),
-    "double_elimination": _("Double Eliminination"),
-}; /* }}} */
-export const  TOURNAMENT_PAIRING_METHODS = { /* {{{ */
+    "elimination": _("Single Elimination"),
+    "double_elimination": _("Double Elimination"),
+};
+export const  TOURNAMENT_PAIRING_METHODS = {
     "random": pgettext("Tournament type", "Random"),
     "slaughter": pgettext("Tournament type", "Slaughter"),
     "strength": pgettext("Tournament type", "Strength"),
     "slide": pgettext("Tournament type", "Slide"),
-}; /* }}} */
+};
 
 function fromNow(t) {
     let d = new Date(t).getTime();

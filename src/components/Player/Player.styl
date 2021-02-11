@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2012-2017  Online-Go.com
+ * Copyright (C) 2012-2020  Online-Go.com
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU Affero General Public License as
@@ -20,8 +20,10 @@
     themed color user
     cursor: pointer;
     white-space: nowrap;
-    
-    //themed color primary
+    display: inline-flex;
+    max-width: 100%;
+    align-items: baseline; /* needed for Game info modal */
+
     &:hover {
         text-decoration: underline;
     }
@@ -38,19 +40,21 @@
         margin-left: 0.1rem;
     }
 
-
-
     &.with-flare:before {
         display: inline-block;
         width: 0.8rem;
         font-family: 'FontAwesome';
         font-size: 0.7rem;
         content: " ";
-        //text-shadow: 0 0 1px rgba(0,0,0,0.5);
     }
     &.with-flare.supporter:before {
         themed color supporter
         content: fa-circle-content;
+    }
+    &.with-flare.professional:before {
+        themed color professional
+        content: fa-graduation-cap;
+        padding-right: 0.2rem;
     }
     &.with-flare.moderator:before {
         themed color moderator
@@ -60,28 +64,53 @@
         themed color admin
         content: fa-wrench-content;
     }
-
-    
-    &.timeout{
-        //color: @ogs-player-timeout  !important;
+    &.with-flare.dragon:before {
+        content: " ";
+        width: 0.75rem;
+        height: 0.75rem;
+        display: inline-block;
+        background-image: svg-load("../assets/dragon-icon.svg");
+        background-size: cover;
+        margin-left: -0.05rem;
+        margin-right: 0.05rem;
     }
-    &.supporter{
-        themed color supporter
+    &.with-flare.aga:before {
+        content: " ";
+        width: 0.75rem;
+        height: 0.75rem;
+        display: inline-block;
+        background-image: url("https://cdn.online-go.com/assets/agaico1.png");
+        background-size: cover;
+        margin-left: -0.05rem;
+        margin-right: 0.05rem;
+    }
+
+
+    &.timeout{
+    }
+    &.supporter {
+        themed-important color supporter
+    }
+    &.professional {
+        themed-important color professional
     }
     &.ambassador{
-        themed color ambassador
+        themed-important color ambassador
     }
     &.teacher{
-        themed color teacher
+        themed-important color teacher
     }
     &.bot{
-        themed color bot
+        themed-important color bot
     }
     &.moderator{
-        themed color moderator
+        themed-important color moderator
+    }
+    &.aga {
+        themed-important color aga-official
     }
     &.admin{
-        themed color admin
+        themed-important color admin
     }
     &.guest {
         color: #888;
@@ -98,6 +127,7 @@
         &:before {
             display: inline-block;
             font-size: 0.5rem;
+
             width: 0.5rem;
             font-family: 'FontAwesome';
             content: fa-circle-content;
@@ -105,6 +135,7 @@
             text-shadow: 0 0 1px rgba(0,0,0,0.5);
             vertical-align: middle;
             padding-bottom: 0.5rem;
+            padding-right: 0.25rem;
             //position: absolute;
             //top: 0.35em;
             //left: -1.1em;
@@ -114,19 +145,24 @@
     &.online:before {
         color: #33FF33;
     }
+
+    .Player-username {
+        flex: 1;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+    }
+
+    .Player-rank {
+        flex: 0;
+        font-size: 0.7em;
+        padding-left: 0.35em;
+        align-self: center;
+    }
 }
 
-.Player[data-rank]:after {
-    content: attr(data-rank)
-    font-size: 0.7em;
-    padding-left: 0.15em;
-    padding-top: 0.2em;
-}
 
 .Player-with-icon {
-    display: inline-flex;
-    align-items: center; /* needed for Game info modal */
-
     .PlayerIcon {
         margin-right: 0.5em;
     }

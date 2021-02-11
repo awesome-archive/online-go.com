@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2012-2017  Online-Go.com
+ * Copyright (C) 2012-2020  Online-Go.com
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU Affero General Public License as
@@ -19,9 +19,8 @@ import * as React from "react";
 import {_, pgettext, interpolate} from "translate";
 import { get} from "requests";
 import {errorAlerter} from "misc";
-import {AdUnit} from "AdUnit";
 import {Player} from "Player";
-import {Card} from "components";
+import {Card} from "material";
 
 interface LeaderBoardProperties {
 }
@@ -35,6 +34,7 @@ export class LeaderBoard extends React.PureComponent<LeaderBoardProperties, any>
     }
 
     componentDidMount() {
+        window.document.title = _("Leaderboards");
         get("leaderboards/")
         .then((leaderboards) => {
             this.setState({
@@ -123,10 +123,12 @@ export class LeaderBoard extends React.PureComponent<LeaderBoardProperties, any>
 
     render() {
         return (
-            <div className="LeaderBoard container">
-                <AdUnit unit="cdm-zone-01" nag/>
-
-                <h1>{_("Site Wide Leaderboards")}</h1>
+            <div className="LeaderBoard page-width">
+                <h2>
+                    <i className="fa fa-trophy"></i>{" "}
+                    {_("Site Wide Tournament Leaderboards")}{" "}
+                    <i className="fa fa-list-ol"></i>
+                </h2>
                 <Card>
                     {this.state.leaderboards.map((row, ridx) => (
                         <div key={ridx} className="row">
@@ -148,11 +150,11 @@ export class LeaderBoard extends React.PureComponent<LeaderBoardProperties, any>
     }
 }
 
-function points(n) {{{
+function points(n) {
     n = parseFloat(n);
     if (n < 1) {
         return n.toPrecision(3);
     }
     return n.toPrecision(4);
-}}}
+}
 

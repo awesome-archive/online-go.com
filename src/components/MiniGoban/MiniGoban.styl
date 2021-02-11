@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2012-2017  Online-Go.com
+ * Copyright (C) 2012-2020  Online-Go.com
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU Affero General Public License as
@@ -23,6 +23,11 @@
     max-height: 100vh;
     align-items: center;
     justify-content: center;
+    themed color fg;
+    &:hover {
+        themed color fg;
+        text-decoration: none;
+    }
 
     &.link {
         cursor: pointer;
@@ -34,23 +39,32 @@
     }
 
 
+    .player-rank {
+        float: left;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+        flex-shrink: 0;
+        flex-basis: auto;
+        margin-right: 0.5em;
+        margin-left: 0.5em
+    }
     .player-name {
         float: left;
-    }
-    .clock {
-        float: right;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+        flex-shrink: 1;
+        flex-basis: auto;
     }
     .score {
         position: absolute;
     }
 
-    .clock.paused {
-        color: #888;
-    }
-
     .title-white, .title-black {
         position: absolute;
-        display: inline-block;
+        display: flex;
+        flex-direction: row;
         font-size: 0.9em;
         left: 1rem;
         right: 1rem;

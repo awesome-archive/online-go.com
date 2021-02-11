@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2012-2017  Online-Go.com
+ * Copyright (C) 2012-2020  Online-Go.com
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU Affero General Public License as
@@ -20,7 +20,6 @@
 puzzle-controls-width=400px
 
 .Puzzle {
-    // here
     display: flex;
     flex-direction: row;
     align-items: stretch;
@@ -29,9 +28,11 @@ puzzle-controls-width=400px
     bottom: 0;
     left: 0;
     right: 0;
-    overflow: hidden;
 
 
+    &.portrait {
+        flex-direction: column;
+    }
 
     .left-col {
     }
@@ -45,16 +46,28 @@ puzzle-controls-width=400px
         flex-direction: column;
         align-items: stretch;
         overflow: hidden;
-        //justify-content: stretch;
-
+        z-index: 1;
+    }
+    &.portrait .center-col {
+        height: 100vw;
+        min-height: 100vw;  // firefox needs this
+        max-height: 100vw;  // firefox needs this
+        flex-basis: 99%;
     }
 
     .left-col, .right-col {
-        width: puzzle-controls-width
+        max-width: puzzle-controls-width
         overflow-y: auto;
         overflow-x: hidden;
         min-height: auto;
         padding: 0.5rem;
+        z-index: 2;
+    }
+    &.portrait .right-col {
+        overflow-y: visible;
+        overflow-x: visible;
+        align-self: center;
+        min-height: 100vh;
     }
 
     .btn-container {
@@ -78,6 +91,7 @@ puzzle-controls-width=400px
 
 
     .horizontal {
+        overflow-x: hidden;
         dt, dd {
             width: 45%;
         }
@@ -91,4 +105,34 @@ puzzle-controls-width=400px
         padding: 0.5rem;
     }
 
+    .puzzle-node-content {
+        border: 1px solid transparent;
+        themed border-color shade4
+        margin-top: 1rem;
+
+        .actions {
+            padding-top: 1rem;
+            text-align: right;
+        }
+
+        .content {
+            padding-left: 0.5rem;
+            padding-right: 0.5rem;
+        }
+
+        .incorrect, .success {
+            font-size: font-size-big;
+            text-align: center;
+            padding: 1rem;
+            font-weight: bold;
+        }
+        .success {
+            themed background-color success
+            themed color colored-background-fg
+        }
+        .incorrect {
+            themed background-color reject
+            themed color colored-background-fg
+        }
+    }
 }

@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2012-2017  Online-Go.com
+ * Copyright (C) 2012-2020  Online-Go.com
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU Affero General Public License as
@@ -17,14 +17,16 @@
 
 import {comm_socket} from "sockets";
 import {challenge} from "ChallengeModal";
+import {createModeratorNote} from "ModNoteModal";
 import {_} from 'translate';
-import data from "data";
+import * as data from "data";
 import ITC from "ITC";
-import {splitOnBytes} from "misc";
+import {splitOnBytes, unicodeFilter} from "misc";
 import {profanity_filter} from "profanity_filter";
 import {player_is_ignored} from "BlockPlayer";
 import {emitNotification} from "Notifications";
-import player_cache from "player_cache";
+import {PlayerCacheEntry} from 'player_cache';
+import * as player_cache from "player_cache";
 import online_status from "online_status";
 
 let last_id: number = 0;
@@ -43,6 +45,7 @@ class PrivateChat {
     last_date = new Date().toLocaleDateString();
     floating = false;
     superchat_enabled = false;
+    banner;
     body;
     input;
     superchat_modal;
@@ -50,7 +53,7 @@ class PrivateChat {
     pc;
     opening;
     player_dom;
-    player = {"username": "..."};
+    player:PlayerCacheEntry;
 
     /* for generating uids */
     chatbase = Math.floor(Math.random() * 100000).toString(36);
@@ -59,14 +62,13 @@ class PrivateChat {
     display_state = "closed";
 
 
-    constructor(user_id, username) { /* {{{ */
+    constructor(user_id, username) {
         this.user_id = user_id;
         comm_socket.send("chat/pm/load", user_id);
 
-        //.append(makePlayerLink(['online', 'nolink'], this))
         this.player_dom = $("<span class='user Player nolink'>...</span>");
         if (username) {
-            this.player_dom.text(username);
+            this.player_dom.text(unicodeFilter(username));
             this.player.username = username;
         }
 
@@ -78,20 +80,28 @@ class PrivateChat {
             }
         });
 
-
+        this.player = {
+            "id": user_id,
+            "username": "...",
+            "ui_class": ""
+        };
         player_cache.fetch(this.user_id, ["username", "ui_class"])
         .then((player) => {
             this.player = player;
-            this.player_dom.text(player.username);
+            this.player_dom.text(unicodeFilter(player.username));
             this.player_dom.addClass(player.ui_class);
+            this.updateInputPlaceholder();
+            if (this.banner) {
+                this.updateModeratorBanner();
+            }
         })
         .catch((err) => {
             console.error(err);
             this.player_dom.text("[error]");
         });
-    } /* }}} */
+    }
 
-    open(send_itc?) { /* {{{ */
+    open(send_itc?) {
         if (this.display_state === "open") { return; }
         if (this.display_state !== "closed") { this.close(false, true); }
         private_chats.push(this);
@@ -109,6 +119,7 @@ class PrivateChat {
                 this.superchat_enabled = !this.superchat_enabled;
                 if (this.superchat_enabled) {
                     superchat.addClass("enabled");
+                    this.dom.addClass("superchat");
 
                     comm_socket.send("chat/pm/superchat", {
                         "player_id": this.user_id,
@@ -118,6 +129,7 @@ class PrivateChat {
                     });
                 } else {
                     superchat.removeClass("enabled");
+                    this.dom.removeClass("superchat");
                     comm_socket.send("chat/pm/superchat", {
                         "player_id": this.user_id,
                         "username": this.player.username,
@@ -131,14 +143,19 @@ class PrivateChat {
                 superchat.addClass("enabled");
             }
             title.append(superchat);
+
+            title.append($("<i>").addClass("fa fa-clipboard").click(() => {
+                this.createModNote();
+            }));
+        }
+        else {
+            title.append($("<i>").addClass("ogs-goban").click(() => {
+                challenge(this.user_id);
+            }));
         }
 
-
-        title.append($("<i>").addClass("ogs-goban").click(() => {
-            challenge(this.user_id);
-        }));
         title.append($("<i>").addClass("fa fa-info-circle").click(() => {
-            window.open("/user/view/" + this.user_id + "/" + encodeURIComponent(this.player.username), "_blank");
+            window.open("/user/view/" + this.user_id + "/" + encodeURIComponent(unicodeFilter(this.player.username)), "_blank");
         }));
         title.append($("<i>").addClass("fa fa-minus").click(() => { this.minimize(true); }));
         title.append($("<i>").addClass("fa fa-times").click(() => { this.close(true); }));
@@ -217,6 +234,9 @@ class PrivateChat {
             }
         };
 
+        let banner = this.banner =  $("<div>").addClass("banner banner-inactive");
+        this.dom.append(banner);
+        this.updateModeratorBanner();
 
         let body = this.body = $("<div>").addClass("body");
         this.dom.append(body);
@@ -227,7 +247,7 @@ class PrivateChat {
         }
 
         let input = this.input = $("<input>").attr("type", "text").keypress((ev) => {
-            if (!data.get('user').email_validated) {
+            if (!data.get('user').email_validated && this.player.ui_class.indexOf('moderator') < 0 && this.lines.length === 0) {
                 return;
             }
 
@@ -240,10 +260,7 @@ class PrivateChat {
             }
         });
 
-        if (!data.get('user').email_validated) {
-            input.attr("placeholder", _("Chat will be enabled once your email address has been validated"));
-            input.attr("disabled", "disabled");
-        }
+        this.updateInputPlaceholder();
 
 
         (input as any).nicknameTabComplete();
@@ -261,8 +278,37 @@ class PrivateChat {
             //ITC.send("private-chat-open", {"user_id": this.user_id, "username": this.player.username});
             data.set("pm.read-" + this.user_id, this.last_uid);
         }
-    }; /* }}} */
-    minimize(send_itc?) { /* {{{ */
+    }
+    updateModeratorBanner() {
+        if (this.player.ui_class.match(/moderator/)) {  // surely would be better to use player.is_moderator, but not available!
+            this.banner.removeClass("banner-inactive");
+            this.banner.empty();
+            let line = $("<div>").addClass("banner-text");
+            if (this.superchat_enabled) {
+                line.addClass("megaphone-banner");
+                line.text(_("OGS Moderator official message: please respond"));
+            }
+            else {
+                line.text(_("(You are talking with an OGS Moderator)"));
+            }
+            this.banner.append(line);
+        }
+    }
+
+    updateInputPlaceholder() {
+        if (!this.input) {
+            return;
+        }
+        if (!data.get('user').email_validated && this.player.ui_class.indexOf('moderator') < 0 && this.lines.length === 0) {
+            this.input.attr("placeholder", _("Chat will be enabled once your email address has been validated"));
+            this.input.attr("disabled", "disabled");
+        } else {
+            this.input.removeAttr("placeholder");
+            this.input.removeAttr("disabled");
+        }
+    }
+
+    minimize(send_itc?) {
         if (this.superchat_enabled) { return; }
         if (this.display_state === "minimized") { return; }
         if (this.display_state !== "closed") { this.close(false, true); }
@@ -296,8 +342,8 @@ class PrivateChat {
         if (send_itc) {
             ITC.send("private-chat-minimize", {"user_id": this.user_id, "username": this.player.username});
         }
-    }; /* }}} */
-    close(send_itc, dont_send_pm_close?) { /* {{{ */
+    }
+    close(send_itc, dont_send_pm_close?) {
         this.display_state = "closed";
         for (let i = 0; i < private_chats.length; ++i) {
             if (private_chats[i].id === this.id) {
@@ -319,8 +365,10 @@ class PrivateChat {
         if (comm_socket && !dont_send_pm_close) {
             comm_socket.send("chat/pm/close", this.user_id);
         }
-    }; /* }}} */
-    addChat(from, txt, user_id, timestamp) { /* {{{ */
+    }
+    addChat(from, txt, user_id, timestamp) {
+        from = unicodeFilter(from);
+
         let line = $("<div>").addClass("chat-line");
         line.addClass("chat-user-" + user_id);
 
@@ -333,7 +381,6 @@ class PrivateChat {
             }
         }
 
-
         if (typeof(txt) === "string" && txt.substr(0, 4) === "/me ") {
             line.append("<span> ** </span>");
             line.append($("<span>").addClass("username").text(from)).append("<span> </span>");
@@ -342,7 +389,6 @@ class PrivateChat {
             line.append($("<span>").addClass("username").text(from)).append("<span>: </span>");
         }
         line.append($("<span>").html(chat_markup(profanity_filter(txt))));
-
 
         this.lines.push(line);
         if (this.body) {
@@ -359,8 +405,10 @@ class PrivateChat {
                 body.scrollTop = body.scrollHeight;
             }
         }
-    }; /* }}} */
-    addSystem(message) { /* {{{ */
+        this.updateInputPlaceholder();
+        this.updateModeratorBanner();
+    }
+    addSystem(message) {
         let line = $("<div>").addClass("chat-line system");
         line.text(message.message);
         this.lines.push(line);
@@ -378,18 +426,28 @@ class PrivateChat {
                 body.scrollTop = body.scrollHeight;
             }
         }
-    }; /* }}} */
-    hilight() { /* {{{ */
+    }
+
+    createModNote = () => {
+        let moderator_note = "";
+        this.lines.forEach((line) => {
+            moderator_note += line[0].textContent + "\n";
+        });
+
+        createModeratorNote(this.user_id, moderator_note);
+    }
+
+    hilight() {
         if (this.dom) {
             this.dom.addClass("highlighted");
         }
-    }; /* }}} */
-    removeHilight() { /* {{{ */
+    }
+    removeHilight() {
         if (this.dom) {
             this.dom.removeClass("highlighted");
         }
-    }; /* }}} */
-    handleChat(line) { /* {{{ */
+    }
+    handleChat(line) {
 
         if (line.message.i) {
             if ((line.message.i + " " + line.message.t + " " + line.from.username) in this.received_messages) {
@@ -429,8 +487,8 @@ class PrivateChat {
         if (this.last_uid === data.get("pm.read-" + this.user_id, "-")) {
             this.removeHilight();
         }
-    }; /* }}} */
-    sendChat(msg) { /* {{{ */
+    }
+    sendChat(msg) {
 
         while (msg.length) {
             let arr = splitOnBytes(msg, 500);
@@ -449,23 +507,23 @@ class PrivateChat {
             });
         }
         this.input.val("");
-    }; /* }}} */
+    }
 
-    startFloating() { /* {{{ */
+    startFloating() {
         if (!this.floating) {
             this.dom.addClass("floating");
             this.floating = true;
             update_chat_layout();
         }
-    } /* }}} */
-    dock() { /* {{{ */
+    }
+    dock() {
         if (this.floating) {
             this.floating = false;
             this.dom.removeClass("floating");
             update_chat_layout();
         }
-    } /* }}} */
-    superchat(enable) {{{
+    }
+    superchat(enable) {
         this.superchat_enabled = enable;
         if (enable) {
             this.open();
@@ -491,10 +549,10 @@ class PrivateChat {
                 this.superchat_modal = null;
             }
         }
-    }}}
+    }
 }
 
-function update_chat_layout() {{{
+function update_chat_layout() {
     let pos = $("#em10").width() / 2.5;
     let max_width = '20rem';
 
@@ -518,16 +576,16 @@ function update_chat_layout() {{{
         docked_chats[i].dom.css({"right": pos, maxWidth: max_width});
         pos += docked_chats[i].dom.width() + 3;
     }
-}}};
+}
 
-export function getPrivateChat(user_id, username?) { /* {{{ */
+export function getPrivateChat(user_id, username?) {
     if (user_id in instances) {
         return instances[user_id];
     }
 
     return (instances[user_id] = new PrivateChat(user_id, username));
-} /* }}} */
-comm_socket.on("private-message", (line) => {{{
+}
+comm_socket.on("private-message", (line) => {
     let pc;
     if (line.from.id === data.get("user").id) {
         pc = getPrivateChat(line.to.id);
@@ -546,8 +604,8 @@ comm_socket.on("private-message", (line) => {{{
     if (pc) {
         pc.handleChat(line);
     }
-}}});
-comm_socket.on("private-superchat", (config) => {{{
+});
+comm_socket.on("private-superchat", (config) => {
     let pc;
     if (config.moderator_id !== data.get("user").id) {
         pc = getPrivateChat(config.moderator_id, config.moderator_username);
@@ -569,18 +627,23 @@ comm_socket.on("private-superchat", (config) => {{{
             pc.open();
         }
     }
-}}});
-ITC.register("private-chat-close", (data) => { /* {{{ */
+});
+ITC.register("private-chat-close", (data) => {
     let pc = getPrivateChat(data.user_id);
     if (pc.display_state === "minimized") {
         pc.close();
     }
-}); /* }}} */
-function chat_markup(body) { /* {{{ */
+});
+function chat_markup(body) {
     if (typeof(body) === "string") {
         let ret = $("<div>").text(body).html();
+        // Some link urls can have an @-sign in. Be careful not to cause the link_matcher
+        // and email_matcher to overlap! See for example
+        // https://www.google.co.uk/maps/place/Platform+9%C2%BE/@51.5321578,-0.1261661
         let link_matcher = /(((ftp|http)(s)?:\/\/)([^<> ]+))/gi;
-        ret = ret.replace(link_matcher, "<a target='_blank' href='$1'>$1</a>");
+        ret = ret.replace(link_matcher, (match) => "<a target='_blank' href='" +
+            match.replace("@", "%40") + "'>" +
+            match.replace("@", "&commat;") + "</a>");
         let email_matcher = /([^<> ]+[@][^<> ]+[.][^<> ]+)/gi;
         ret = ret.replace(email_matcher, "<a target='_blank' href='mailto:$1'>$1</a>");
         let review_matcher = /(^##([0-9]{3,})|([ ])##([0-9]{3,}))/gi;
@@ -591,8 +654,11 @@ function chat_markup(body) { /* {{{ */
         ret = ret.replace(player_matcher, "<a target='_blank' href='/user/view/$2'>$1</a>");
         let group_matcher = /(#group-([0-9]+))/gi;
         ret = ret.replace(group_matcher, "<a target='_blank' href='/group/$2'>$1</a>");
+        // try to migigate tsumegodojo spam
+        let tsumegodojo_matcher = /(tsumegodojo)/gi;
+        ret = ret.replace(tsumegodojo_matcher, "tsumegododo");
         return ret;
     } else {
         console.log("Attempted to markup non-text object: ", body);
     }
-} /* }}} */
+}

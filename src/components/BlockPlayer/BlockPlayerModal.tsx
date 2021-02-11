@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2012-2017  Online-Go.com
+ * Copyright (C) 2012-2020  Online-Go.com
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU Affero General Public License as
@@ -34,7 +34,7 @@ export class BlockPlayerModal extends React.PureComponent<BlockPlayerModalProper
         this.state = Object.assign({}, getBlocks(this.props.playerId));
     }
 
-    componentWillReceiveProps(next_props) {
+    UNSAFE_componentWillReceiveProps(next_props) {
         this.setState(getBlocks(next_props.playerId));
     }
 
@@ -44,7 +44,7 @@ export class BlockPlayerModal extends React.PureComponent<BlockPlayerModalProper
     }
 
     toggleGameBlock = () => {
-        setGameBlock(this.props.playerId, !this.state.block_chat);
+        setGameBlock(this.props.playerId, !this.state.block_games);
         this.setState({block_games: !this.state.block_games});
     }
 
@@ -53,11 +53,11 @@ export class BlockPlayerModal extends React.PureComponent<BlockPlayerModalProper
             <div className="BlockPlayerModal">
                 <div className="details">
                     <div className="block-option">
-                        <input id="block-chat" type="checkbox" checked={this.state.block_chat} onChange={this.toggleChatBlock} /> 
+                        <input id="block-chat" type="checkbox" checked={this.state.block_chat} onChange={this.toggleChatBlock} />
                         <label htmlFor="block-chat">{_("Ignore chats and private messages")}</label>
                     </div>
                     <div className="block-option">
-                        <input id="block-game" type="checkbox" checked={this.state.block_games}  onChange={this.toggleGameBlock} /> 
+                        <input id="block-game" type="checkbox" checked={this.state.block_games}  onChange={this.toggleGameBlock} />
                         <label htmlFor="block-game">{_("Block user from accepting my open games")}</label>
                     </div>
                 </div>

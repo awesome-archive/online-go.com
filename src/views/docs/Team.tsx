@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2012-2017  Online-Go.com
+ * Copyright (C) 2012-2020  Online-Go.com
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU Affero General Public License as
@@ -16,11 +16,11 @@
  */
 
 import * as React from "react";
-import {_, getLanguageFlag} from "translate";
+import {_, pgettext, getLanguageFlag} from "translate";
 import {get} from "requests";
 import {Flag} from "Flag";
 import {Player} from "Player";
-import data from "data";
+import * as data from "data";
 
 function shuffleArray(array) {
     for (let i = array.length - 1; i >= 0; i--) {
@@ -40,8 +40,8 @@ export class Team extends React.PureComponent<{}, any> {
         };
     }
 
-    componentWillMount() {
-        get('https://api.github.com/repos/online-go/online-go.com/contributors')
+    UNSAFE_componentWillMount() {
+        get('https://api.github.com/repos/online-go/online-go.com/contributors?per_page=100')
         .then((list) => {
             this.setState({contributors: list});
         })
@@ -64,25 +64,29 @@ export class Team extends React.PureComponent<{}, any> {
         let hi = getLanguageFlag("hindi", country, "in");
         let gb = getLanguageFlag("gb", country, "gb");
         let se = getLanguageFlag("swedish", country, "se");
+        let cz = getLanguageFlag("czech", country, "cz");
+        let nl = getLanguageFlag("netherlands", country, "nl");
+        let jp = getLanguageFlag("japan", country, "jp");
 
         let moderators = [
-            //{'id': 57612, 'username': 'Franzisa', 'country': ['de', 'fr'], 'languages': [ de,fr,en ]},
-            //{'id': 914, 'username': 'pathogenix', 'country': ['gb'], 'languages': [en]},
-            {"id": 784, "username": "mlopezviedma", "country": ["ar"], "languages": [es, en]},
-            {"id": 781, "username": "crodgers", "country": ["us"], "languages": [en]},
-            //{'id': 963, 'username': 'thouis', 'country': ['us'], 'languages': [fr, en]},
-            {"id": 69627, "username": "xhu98", "country": ["us"], "languages": [cn, en]},
-            {"id": 4, "username": "matburt", "country": ["us"], "languages": [en]},
-            {"id": 1, "username": "anoek", "country": ["us"], "languages": [en]},
-
-            //{'id': 444, 'username': 'calantir', 'country': ['us'], 'languages': [en]},
-            {"id": 52, "username": "trohde", "country": ["de"], "languages": [de, en]},
-            //{'id': 94496, 'username': 'tinuviel', 'country': ['us'], 'languages': [en]},
-            //{'id': 1367, 'username': 'Fairgo', 'country': ['us'], 'languages': [hi, en]},
-            {"id": 64817, "username": "mark5000", "country": ["us"], "languages": [en]},
-            {"id": 66091, "username": "Revar Isavé", "country": ["de"], "languages": [de, gb]},
-            {"id": 441, "username": "VincentCB", "country": ["ca"], "languages": [en, fr]},
-            {"id": 55415, "username": "sousys", "country": ["se"], "languages": [se, en]},
+            {"id": 784    , "username": "mlopezviedma"   , "country": ["ar"] , "languages": [es, en]} ,
+            {"id": 781    , "username": "crodgers"       , "country": ["us"] , "languages": [en]} ,
+            {"id": 69627  , "username": "xhu98"          , "country": ["us"] , "languages": [cn, en]} ,
+            {"id": 4      , "username": "matburt"        , "country": ["us"] , "languages": [en]} ,
+            {"id": 1      , "username": "anoek"          , "country": ["us"] , "languages": [en]} ,
+            {"id": 52     , "username": "trohde"         , "country": ["de"] , "languages": [de, en]} ,
+            {"id": 64817  , "username": "mark5000"       , "country": ["us"] , "languages": [en]} ,
+            {"id": 66091  , "username": "Revar Isavé"    , "country": ["de"] , "languages": [de, gb]} ,
+            {"id": 441    , "username": "VincentCB"      , "country": ["ca"] , "languages": [en, fr]} ,
+            {"id": 55415  , "username": "entrpy"         , "country": ["se"] , "languages": [se, en]} ,
+            {"id": 360861 , "username": "AdamR"          , "country": ["cz"] , "languages": [cz, en]} ,
+            {"id": 299041 , "username": "Razza99"        , "country": ["gb"] , "languages": [en]} ,
+            {"id": 412892 , "username": "Eugene"         , "country": ["au"] , "languages": [en]} ,
+            {"id": 445315 , "username": "BHydden"        , "country": ["au"] , "languages": [en]} ,
+            {"id": 391401 , "username": "Conrad Melville", "country": ["us"] , "languages": [en]} ,
+            {"id": 449941 , "username": "flovo"          , "country": ["eu"] , "languages": [de, en]} ,
+            {"id": 209826 , "username": "Vsotvep"        , "country": ["nl"] , "languages": [nl, en, jp]} ,
+            {"id": 683917 , "username": "RubyMineshaft"  , "country": ["us"] , "languages": [en, cn]} ,
         ];
         let developers = [
             {"id": 4, "username": "matburt", "country": ["us"], "languages": [en]},
@@ -94,47 +98,174 @@ export class Team extends React.PureComponent<{}, any> {
 
 
         return (
-            <div className="container" style={{paddingTop: "2em", textAlign: "center"}}>
-                <div style={{display: "inline-block", textAlign: "left"}}>
-                    <div style={{display: "inline-block", width: "20em", textAlign: "justify"}}>
-                        {_('Online-Go.com is maintained by a small handful of dedicated volunteers, drop them a "Thank You!" message sometime!')}
+            <div id='Team' className="container page-width">
+                <h2>{_("Team")}</h2>
+                <div style={{display: "inline-block", textAlign: "justify"}}>
+                    {_('Online-Go.com is maintained by a small handful of dedicated volunteers, drop them a "Thank You!" message sometime!')}
+                </div>
+                <div className="row" style={{paddingLeft: "2em"}}>
+                    <div className="col-sm-6">
+                        <h3>{_("Moderators")}</h3>
+                        {moderators.map((u, idx) => (
+                            <div key={u.id} >
+                                <span className='flags'>
+                                    {u.country.map((c, idx) => (<Flag key={c} country={c}/>))}
+                                </span>
+                                <span style={{display: "inline-block", width: "9em"}}>
+                                    <Player user={u} />
+                                </span>
+                                {_("Languages")}: {u.languages.map((c, idx) => (<span key={c} ><Flag country={c}/></span>) )}
+                            </div>
+                        ))}
                     </div>
+                    <div className="col-sm-6">
+                        <h3>{_("Lead Developers")}</h3>
+                        {developers.map((u, idx) => (
+                            <div key={u.id}>
+                                <span className='flags'>
+                                    {u.country.map((c, idx) => (<span key={c} ><Flag country={c}/></span>) )}
+                                </span>
+                                <span style={{display: "inline-block", width: "9em"}}>
+                                    <Player user={u} />
+                                </span>
+                                {_("Languages")}: {u.languages.map((c, idx) => (<span key={c} ><Flag country={c}/></span>))}
+                            </div>
+                        ))}
 
-                    <h3>{_("Moderators")}</h3>
-                    {moderators.map((u, idx) => (
-                        <div key={idx} >
-                            <span style={{display: "inline-block", width: "3em"}}>
-                                {u.country.map((c, idx) => (<Flag key={idx} country={c}/>))}
+                        <h3>{_("Github Contributors")}</h3>
+                        {this.state.contributors.map((u, idx) => (
+                            <div key={idx}>
+                                <span className='flags'>
+                                    <img src={u.avatar_url} width={15} height={15}/>
+                                </span>
+                                <span className='name'>
+                                    <a href={u.html_url || ('https://github.com/' + u.name)}>{u.login || u.name}</a>
+                                </span>
+                            </div>
+                        ))}
+
+                        <h3>{_("Security Vulnerability Reporting")}</h3>
+                        <div>
+                            <span className='flags'>
+                                <Flag country='us'/>
                             </span>
-                            <span style={{display: "inline-block", width: "8em"}}>
-                                <Player user={u} />
-                            </span>
-                            {_("Languages")}: {u.languages.map((c, idx) => (<span key={idx} ><Flag country={c}/></span>) )}
-                        </div>
-                    ))}
-                    <h3>{_("Lead Developers")}</h3>
-                    {developers.map((u, idx) => (
-                        <div key={idx}>
-                            <span style={{display: "inline-block", width: "3em"}}>
-                                {u.country.map((c, idx) => (<span key={idx} ><Flag country={c}/></span>) )}
-                            </span>
-                            <span style={{display: "inline-block", width: "8em"}}>
-                                <Player user={u} />
-                            </span>
-                            {_("Languages")}: {u.languages.map((c, idx) => (<span key={idx} ><Flag country={c}/></span>))}
-                        </div>
-                    ))}
-                    <h3>{_("Github Contributors")}</h3>
-                    {this.state.contributors.map((u, idx) => (
-                        <div key={idx}>
-                            <span style={{display: "inline-block", width: "3em"}}>
-                                <img src={u.avatar_url} width={15} height={15}/>
-                            </span>
-                            <span style={{display: "inline-block", width: "8em"}}>
-                                <a href={u.html_url}>{u.login}</a>
+                            <span className='name'>
+                                <a href='https://online-go.com/user/view/740904/A-i'>Aiden</a>
                             </span>
                         </div>
-                    ))}
+
+                        <h3>{pgettext("Sound and graphics files", "Assets")}</h3>
+                        <div>
+                            <span className='flags'>
+                                <Flag country='gb'/>
+                            </span>
+                            <span className='name'>
+                                <a href='https://voicebunny.com/voice-actor/claire-natalie-TK5C1B8'>Claire Natalie</a>
+                            </span>
+                            <span className='description'>
+                                - GB English voiceover
+                            </span>
+                        </div>
+
+                        <div>
+                            <span className='flags'>
+                                <Flag country='us'/>
+                            </span>
+                            <span className='name'>
+                                <a href='https://freesound.org/people/rhodesmas/'>Andy Rhode</a>
+                            </span>
+                            <span className='description'>
+                                - Effects
+                            </span>
+                        </div>
+
+                        <div>
+                            <span className='flags'>
+                                <Flag country='us'/>
+                            </span>
+                            <span className='name'>
+                                <a href='https://freesound.org/people/tim.kahn/'>Amy Gedgaudas</a>
+                            </span>
+                            <span className='description'>
+                                - 2013 English 10 second count down
+                            </span>
+                        </div>
+
+                        <div>
+                            <span className='flags'>
+                                <Flag country='us'/>
+                            </span>
+                            <span className='name'>
+                                <a href='https://freesound.org/people/acclivity/'>acclivity</a>
+                            </span>
+                            <span className='description'>
+                                - Effects
+                            </span>
+                        </div>
+
+                        <div>
+                            <span className='flags'>
+                                <Flag country='us'/>
+                            </span>
+                            <span className='name'>
+                                <a href='https://freesound.org/people/JonnyRuss01/'>JonnyRuss01</a>
+                            </span>
+                            <span className='description'>
+                                - Effects
+                            </span>
+                        </div>
+
+
+                        <div>
+                            <span className='flags'>
+                                <Flag country='us'/>
+                            </span>
+                            <span className='name'>
+                                <a href='https://freesound.org/people/leviclaassen/'>leviclaassen</a>
+                            </span>
+                            <span className='description'>
+                                - Effects
+                            </span>
+                        </div>
+
+                        <div>
+                            <span className='flags'>
+                                <Flag country='us'/>
+                            </span>
+                            <span className='name'>
+                                <a href='http://seamless-pixels.blogspot.com/'>Seamless Texture Library</a>
+                            </span>
+                            <span className='description'>
+                                - Marble, Granite, and Rust Goban Textures
+                            </span>
+                        </div>
+
+                        <div>
+                            <span className='flags'>
+                                <Flag country='fr'/>
+                            </span>
+                            <span className='name'>
+                                <a href='https://github.com/ornicar/lila/tree/master/public/sound'>Lichess - Effects</a>
+                            </span>
+                        </div>
+
+                        <div>
+                            <span className='flags'>
+                                <Flag country='ar'/>
+                            </span>
+                            <span className='name'>
+                                <a href='https://online-go.com/player/784/mlopezviedma'>Mariano López Minnucci</a>
+                            </span>
+                        </div>
+                        <div>
+                            <span className='flags'>
+                                <Flag country='us'/>
+                            </span>
+                            <span className='name'>
+                                <a href='https://online-go.com/player/1/anoek'>Akita Noek</a>
+                            </span>
+                        </div>
+                    </div>
                 </div>
             </div>
         );

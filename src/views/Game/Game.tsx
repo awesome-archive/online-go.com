@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2012-2017  Online-Go.com
+ * Copyright (C) 2012-2020  Online-Go.com
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU Affero General Public License as
@@ -15,102 +15,93 @@
  * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
 
-import data from "data";
+import * as data from "data";
 import device from "device";
-import preferences from "preferences";
+import * as preferences from "preferences";
 import * as React from "react";
-import {Link, browserHistory} from "react-router";
-import {_, pgettext, interpolate} from "translate";
-import {post, get, api1} from "requests";
-import {OGSComponent, KBShortcut, UIPush} from "components";
-import {alertModerator, errorAlerter, ignore} from "misc";
-import {LineText} from "misc-ui";
+import ReactResizeDetector from 'react-resize-detector';
+import {Link} from "react-router-dom";
+import {browserHistory} from "ogsHistory";
+import {_, ngettext, pgettext, interpolate, current_language} from "translate";
+import {post, get, api1, del} from "requests";
+import {KBShortcut} from "KBShortcut";
+import {UIPush} from "UIPush";
+import {alertModerator, errorAlerter, ignore, getOutcomeTranslation} from "misc";
 import {challengeFromBoardPosition, challengeRematch} from "ChallengeModal";
-import {Goban, GoEngine, GoMath} from "goban";
+import {Goban, GobanCanvas, GobanCanvasConfig, GoEngine, GoMath, MoveTree, AudioClockEvent} from "goban";
 import {isLiveGame} from "TimeControl";
 import {termination_socket, get_network_latency, get_clock_drift} from "sockets";
 import {Dock} from "Dock";
 import {Player, setExtraActionCallback} from "Player";
 import {Flag} from "Flag";
-import player_cache from "player_cache";
-import {getPlayerIconURL} from "PlayerIcon";
-import {profanity_filter} from "profanity_filter";
+import * as player_cache from "player_cache";
+import {icon_size_url} from "PlayerIcon";
 import {notification_manager} from "Notifications";
 import {PersistentElement} from "PersistentElement";
 import {close_all_popovers} from "popover";
 import {Resizable} from "Resizable";
-import {TabCompleteInput} from "TabCompleteInput";
-import {ChatUserList, ChatUserCount} from "ChatUserList";
 import {ChatPresenceIndicator} from "ChatPresenceIndicator";
 import {chat_manager} from "chat_manager";
 import {openGameInfoModal} from "./GameInfoModal";
 import {openGameLinkModal} from "./GameLinkModal";
-import {VoiceChat} from "VoiceChat";
-import {openACLModal} from "./ACLModal";
-import {sfx} from "ogs-goban/SFXManager";
-import {AdUnit} from "AdUnit";
-import * as moment from "moment";
+//import {VoiceChat} from "VoiceChat";
+import {openACLModal} from "ACLModal";
+import {sfx, SFXSprite, ValidSound} from "sfx";
+import {AIReview} from "./AIReview";
+import {GameChat} from "./Chat";
+import {setActiveGameView} from "./Chat";
+import {CountDown} from "./CountDown";
+import {toast} from "toast";
+import {Clock} from "Clock";
+import {JGOFClock} from "goban";
+import {GameTimings} from "./GameTimings";
 
 declare var swal;
 
-let Perf = (React as any).addons ? (React as any).addons.Perf : null;
-window["Perf"] = Perf;
-
 let win = $(window);
-let active_game_view = null;
 
 interface GameProperties {
-    params: {
-        game_id?: string,
-        review_id?: string,
+    match: {
+        params: {
+            game_id?: string,
+            review_id?: string,
+            move_number?: string,
+        }
     };
 }
 
-interface GameChatProperties {
-    chatlog: Array<any>;
-    gameview: Game;
-    userIsPlayer: boolean;
-    onChatLogChanged: (c) => void;
-    channel: string;
-}
+export type ViewMode = "portrait"|"wide"|"square";
+type AdClass = 'no-ads' | 'block' | 'goban-banner' | 'outer-banner' | 'mobile-banner';
 
-interface GameChatLineProperties {
-    line: any;
-    lastline: any;
-    gameview: Game;
-}
-
-/* TODO: Implement giving voice and control over to players in Reviews */
-/* TODO: Implement mobile interface for reviews */
-
-
-export type ViewMode = "portrait"|"wide"|"square"|"zen";
-type AdClass = "large-rectangle"|"medium-rectangle"|"leaderboard"|"mobile-banner"|"wide-skyscraper"|"half-page"|"no-ads";
-
-export class Game extends OGSComponent<GameProperties, any> {
-    refs: {
-        goban;
-        goban_container;
-        chat;
-    };
+export class Game extends React.PureComponent<GameProperties, any> {
+    ref_goban;
+    ref_goban_container:HTMLElement;
+    ref_players;
+    ref_action_bar;
+    ref_game_action_buttons;
+    ref_game_state_label;
+    ref_chat;
+    ref_move_tree_container:HTMLElement;
 
     game_id: number;
+    creator_id: number;
+    ladder_id: number;
+    tournament_id: number;
+    ai_review_selected: string | null = null;
     review_id: number;
-    goban_div: any; ;
-    white_clock: any; ;
-    black_clock: any; ;
+    move_number: number | null = null;
+    goban_div: HTMLDivElement;
     goban: Goban;
-    resize_debounce: number = null;
+    resize_debounce: any = null;
     set_analyze_tool: any = {};
     score_popups: any = { };
     ad: HTMLElement;
-    ad_class: AdClass = null;
     autoplay_timer = null;
-    stone_removal_accept_timeout: number = null;
+    stone_removal_accept_timeout: any = null;
     conditional_move_list = [];
     selected_conditional_move = null;
     chat_log = [];
-    chat_update_debounce: number = null;
+    chat_update_debounce: any = null;
     last_variation_number: number = 0;
     in_pushed_analysis: boolean = false;
     chat_proxy;
@@ -122,27 +113,43 @@ export class Game extends OGSComponent<GameProperties, any> {
     conditional_move_tree;
     leave_pushed_analysis: () => void = null;
     stashed_conditional_moves = null;
+    volume_sound_debounce: any = null;
+    copied_node: MoveTree = null;
 
+    white_username: string = "White";
+    black_username: string = "Black";
 
     decide_white: () => void;
     decide_black: () => void;
     decide_tie: () => void;
 
-    constructor(props) { /* {{{ */
+    return_url?: string; // url to return to after a game is over
+    return_url_debounce: boolean = false;
+
+    constructor(props) {
         super(props);
         window["Game"] = this;
 
-        this.game_id = this.props.params.game_id ? parseInt(this.props.params.game_id) : 0;
-        this.review_id = this.props.params.review_id ? parseInt(this.props.params.review_id) : 0;
+        try {
+            this.return_url = (new URLSearchParams(window.location.search)).get('return') || undefined;
+            // console.log("Return url", this.return_url);
+        } catch (e) {
+            console.error(e);
+        }
+
+        this.game_id = this.props.match.params.game_id ? parseInt(this.props.match.params.game_id) : 0;
+        this.review_id = this.props.match.params.review_id ? parseInt(this.props.match.params.review_id) : 0;
+        if ("move_number" in this.props.match.params) {
+            // 0 is a valid move number, and is different from a lack of move_number meaning load latest move.
+            this.move_number = parseInt(this.props.match.params.move_number);
+        }
         this.state = {
-            view_mode: false,
+            view_mode: this.computeViewMode(),
             squashed: goban_view_squashed(),
             undo_requested: false,
             estimating_score: false,
-            analyze_pencil_color: "#8DDD3C",
-            //show_ads: data.get('user').id === 1,
+            analyze_pencil_color: "#004cff",
             show_submit: false,
-            show_ads: false,
             user_is_player: false,
             zen_mode: false,
             autoplaying: false,
@@ -153,13 +160,21 @@ export class Game extends OGSComponent<GameProperties, any> {
             strict_seki_mode: false,
             player_icons: {},
             volume: preferences.get("sound-volume"),
+            historical_black: null,
+            historical_white: null,
+            annulled: false,
+            black_auto_resign_expiration: null,
+            white_auto_resign_expiration: null,
+            ai_review_enabled: preferences.get('ai-review-enabled'),
+            show_score_breakdown: false,
+            selected_ai_review_uuid: null,
+            show_game_timing: false,
         };
-        this.state.view_mode = this.computeViewMode(); /* needs to access this.state.zen_mode */
 
+        sfx.setVolumeOverride(this.state.volume);
         this.conditional_move_tree = $("<div class='conditional-move-tree-container'/>")[0];
-        this.goban_div = $("<div class='Goban'>");
-        this.white_clock = $("<div class='Goban'>");
-        this.black_clock = $("<div class='Goban'>");
+        this.goban_div = document.createElement('div');
+        this.goban_div.className = 'Goban';
         this.checkAndEnterAnalysis = this.checkAndEnterAnalysis.bind(this);
         this.nav_up = this.nav_up.bind(this);
         this.nav_down = this.nav_down.bind(this);
@@ -187,12 +202,6 @@ export class Game extends OGSComponent<GameProperties, any> {
             clear_and_sync: () => { this.goban.syncReviewMove({"clearpen": true}); this.goban.clearAnalysisDrawing(); },
             delete_branch: () => { this.goban_deleteBranch(); },
         };
-        this.score_popups = {
-            popup_black: this.popupScores.bind(this, "black"),
-            popup_white: this.popupScores.bind(this, "white"),
-            hide_black: this.hideScores.bind(this, "black"),
-            hide_white: this.hideScores.bind(this, "white"),
-        };
 
         this.handleEscapeKey = this.handleEscapeKey.bind(this);
         this.toggleZenMode = this.toggleZenMode.bind(this);
@@ -206,7 +215,6 @@ export class Game extends OGSComponent<GameProperties, any> {
         this.estimateScore = this.estimateScore.bind(this);
         this.alertModerator = this.alertModerator.bind(this);
         this.showLinkModal = this.showLinkModal.bind(this);
-        this.downloadSGF = this.downloadSGF.bind(this);
         this.pauseGame = this.pauseGame.bind(this);
         this.decide_black = this.decide.bind(this, "black");
         this.decide_white = this.decide.bind(this, "white");
@@ -223,7 +231,6 @@ export class Game extends OGSComponent<GameProperties, any> {
         this.goban_setModeDeferredPlay = this.goban_setModeDeferredPlay.bind(this);
         this.stopEstimatingScore = this.stopEstimatingScore.bind(this);
         this.setStrictSekiMode = this.setStrictSekiMode.bind(this);
-        this.goban_deleteBranch = this.goban_deleteBranch.bind(this);
         this.rematch = this.rematch.bind(this);
         this.onStoneRemovalAutoScore = this.onStoneRemovalAutoScore.bind(this);
         this.onStoneRemovalAccept = this.onStoneRemovalAccept.bind(this);
@@ -236,21 +243,21 @@ export class Game extends OGSComponent<GameProperties, any> {
         this.setPencilColor = this.setPencilColor.bind(this);
         this.goban_resumeGame = this.goban_resumeGame.bind(this);
         this.updateVariationName = this.updateVariationName.bind(this);
-    } /* }}}  */
-    componentWillMount() {{{
-        super.componentWillMount();
-        active_game_view = this;
+    }
+    UNSAFE_componentWillMount() {
+        setActiveGameView(this);
         setExtraActionCallback(this.renderExtraPlayerActions);
         $(window).on("focus", this.onFocus);
-    }}}
-    componentWillReceiveProps(nextProps) {{{
-        super.componentWillReceiveProps(nextProps);
+    }
+    UNSAFE_componentWillReceiveProps(nextProps) {
         if (
-            this.props.params.game_id !== nextProps.params.game_id ||
-            this.props.params.review_id !== nextProps.params.review_id
+            this.props.match.params.game_id !== nextProps.match.params.game_id ||
+            this.props.match.params.review_id !== nextProps.match.params.review_id
         ) {
             this.deinitialize();
-            this.goban_div.empty();
+            while (this.goban_div.firstChild) {
+                this.goban_div.removeChild(this.goban_div.firstChild);
+            }
 
             this.setState({
                 portrait_tab: "game",
@@ -259,48 +266,69 @@ export class Game extends OGSComponent<GameProperties, any> {
                 show_submit: false,
                 autoplaying: false,
                 review_list: [],
+                historical_black: null,
+                historical_white: null,
             });
 
-            this.game_id = nextProps.params.game_id ? parseInt(nextProps.params.game_id) : 0;
-            this.review_id = nextProps.params.review_id ? parseInt(nextProps.params.review_id) : 0;
+            this.game_id = nextProps.match.params.game_id ? parseInt(nextProps.match.params.game_id) : 0;
+            this.review_id = nextProps.match.params.review_id ? parseInt(nextProps.match.params.review_id) : 0;
             this.sync_state();
         } else {
-            console.log("componentWillReceiveProps called with same game id: ", this.props, nextProps);
+            console.log("UNSAFE_componentWillReceiveProps called with same game id: ", this.props, nextProps);
         }
-    }}}
-    componentDidUpdate(prevProps, prevState) {{{
+    }
+    componentDidUpdate(prevProps, prevState) {
         if (
-            this.props.params.game_id !== prevProps.params.game_id ||
-            this.props.params.review_id !== prevProps.params.review_id
+            this.props.match.params.game_id !== prevProps.match.params.game_id ||
+            this.props.match.params.review_id !== prevProps.match.params.review_id
         ) {
             this.initialize();
             this.sync_state();
         }
-        this.onResize();
-    }}}
-    componentDidMount() {{{
-        super.componentDidMount();
+        this.onResize(false, true);
+    }
+    componentDidMount() {
         this.initialize();
         if (this.computeViewMode() === "portrait") {
-            this.refs.goban_container.style.minHeight = `${screen.width}px`;
+            this.ref_goban_container.style.minHeight = `${screen.width}px`;
         } else {
-            this.refs.goban_container.style.minHeight = `initial`;
+            this.ref_goban_container.style.minHeight = `initial`;
         }
         this.onResize();
-    }}}
-    componentWillUnmount() {{{
-        super.componentWillUnmount();
-        sfx.volume_override = null;
+    }
+    componentWillUnmount() {
+        sfx.clearVolumeOverride();
         this.deinitialize();
-        active_game_view = null;
+        setActiveGameView(null);
         setExtraActionCallback(null);
         $(window).off("focus", this.onFocus);
         window.document.title = "OGS";
-    }}}
-    deinitialize() {{{
+        let body = document.getElementsByTagName('body')[0];
+        body.classList.remove("zen");   //remove the class
+    }
+    getLocation():string {
+        return window.location.pathname;
+    }
+    autoadvance = () => {
+        let user = data.get('user');
+
+        if (!user.anonymous && /^\/game\//.test(this.getLocation())) {
+            /* if we just moved */
+            if (this.goban && this.goban.engine && this.goban.engine.playerNotToMove() === user.id) {
+                if (!isLiveGame(this.goban.engine.time_control) && preferences.get("auto-advance-after-submit")) {
+                    if (notification_manager.anyYourMove()) {
+                        notification_manager.advanceToNextBoard();
+                    }
+                }
+            }
+        }
+    }
+    deinitialize() {
         this.chat_proxy.part();
         this.chat_log = [];
-        $(window).off("resize", this.onResize as () => void);
+        this.creator_id = null;
+        this.ladder_id = null;
+        this.tournament_id = null;
         $(document).off("keypress", this.setLabelHandler);
         try {
             this.goban.destroy();
@@ -317,32 +345,27 @@ export class Game extends OGSComponent<GameProperties, any> {
         }
         window["Game"] = null;
         window["global_goban"] = null;
-    }}}
-    onFocus = () => {{{
+        this.setState({
+            black_auto_resign_expiration: null,
+            white_auto_resign_expiration: null,
+        });
+    }
+    onFocus = () => {
         if (this.goban && this.goban.engine) {
             this.last_move_viewed = this.goban.engine.getMoveNumber();
         }
         window.document.title = this.on_refocus_title;
-    }}}
-    initialize() {{{
+    }
+    initialize() {
         this.chat_proxy = this.game_id
-            ? chat_manager.join(`game-${this.game_id}`, interpolate(_("Game {{number}}"), {"number": this.game_id}))
-            : chat_manager.join(`review-${this.review_id}`, interpolate(_("Review {{number}}"), {"number": this.review_id}));
-        $(window).on("resize", this.onResize as () => void);
+            ? chat_manager.join(`game-${this.game_id}`)
+            : chat_manager.join(`review-${this.review_id}`);
         $(document).on("keypress", this.setLabelHandler);
-        //chat_handlers = goban_chat_initialize($scope);
-        //let live_suffix = (game.time_per_move || 86400) < (30*60) ? "-live" : "";
-        //let label_position = $.jStorage.get("go.settings.label-position", "all");
+
         let label_position = preferences.get("label-positioning");
-        let opts: any = {
+        let opts: GobanCanvasConfig = {
             "board_div": this.goban_div,
-            //"title_div": $("#goban-primary-ctrl"),
-            "black_clock": "#game-black-clock",
-            "white_clock": "#game-white-clock",
-            "stone_removal_clock": "#stone-removal-clock",
-            "node_textarea": "#game-move-node-text",
-            //"game_type": $scope.game.type,
-            //"game_source": $scope.game.source,
+            "move_tree_container": this.ref_move_tree_container,
             "interactive": true,
             "connect_to_chat": true,
             "isInPushedAnalysis": () => this.in_pushed_analysis,
@@ -351,48 +374,21 @@ export class Game extends OGSComponent<GameProperties, any> {
                     this.leave_pushed_analysis();
                 }
             },
-
-            /*
-            "onChat": function(m,t) { chat_handlers.handleChat(m,t); },
-            "onChatReset": function() { chat_handlers.handleChatReset(); },
-            "onPendingResignation": function(player_id, delay) {
-                if (global_user && player_id === global_user.id) {
-                    if (!leaving_page) {
-                        //console.log("I disconnected from another tab, but I guess I have multiple open, clearing resignation ");
-                        goban.clearPendingResignation();
-                    }
-                } else {
-                    //console.log("Player " + player_id + " disconnected, will be resigning in "+ delay + "ms");
-                }
-            },
-            "onPendingResignationCleared": function(player_id, delay) {
-                //console.log("Player " + player_id + " reconnected, resignation canceled");
-            },
-            "onClearChatLogs": function() {
-                chat_handlers.clearChatLogs();
-            },
-            */
             "game_id": null,
             "review_id": null,
             "draw_top_labels": (label_position === "all" || label_position.indexOf("top") >= 0),
             "draw_left_labels": (label_position === "all" || label_position.indexOf("left") >= 0),
             "draw_right_labels": (label_position === "all" || label_position.indexOf("right") >= 0),
             "draw_bottom_labels": (label_position === "all" || label_position.indexOf("bottom") >= 0),
-            "move_tree_div": "#move-tree-container",
-            "move_tree_canvas": "#move-tree-canvas",
-            "display_width": Math.min(this.refs.goban_container.offsetWidth, this.refs.goban_container.offsetHeight),
-
-            //"square_size": 10,
-            //"wait_for_game_to_start": $scope.game.started == null,
-            //"width": $scope.game.width,
-            //"height": $scope.game.height,
+            "display_width": Math.min(this.ref_goban_container.offsetWidth, this.ref_goban_container.offsetHeight),
+            "visual_undo_request_indicator": preferences.get("visual-undo-request-indicator"),
         };
 
         if (opts.display_width <= 0) {
             let I = setInterval(() => {
                 this.onResize(true);
                 setTimeout(() => {
-                    if (Math.min(this.refs.goban_container.offsetWidth, this.refs.goban_container.offsetHeight) > 0) {
+                    if (!this.goban || (this.ref_goban_container && Math.min(this.ref_goban_container.offsetWidth, this.ref_goban_container.offsetHeight) > 0)) {
                         clearInterval(I);
                     }
                 }, 1);
@@ -408,81 +404,170 @@ export class Game extends OGSComponent<GameProperties, any> {
             opts.isPlayerController = () => this.goban.review_controller_id === data.get("user").id;
         }
 
-        console.log(opts);
-
-        /*
-        if (global_user) {
-            opts.username = global_user.username;
-            opts.chat_player_id = global_user.id;
-            opts.chat_auth = $scope.game_chat_auth;
-        }
-        if ($scope.auth) {
-            opts.auth = $scope.auth;
-        }
-        */
-
-        //goban = new Goban(opts, initial_gamedata);
         this.goban = new Goban(opts);
         this.onResize(true);
-        //global_goban = this.goban;
         window["global_goban"] = this.goban;
-        //window["this.goban"] = goban;
-        //$scope.goban = goban;
         if (this.review_id) {
             this.goban.setMode("analyze");
         }
 
-        /* Title Updates {{{ */
-        let last_title = window.document.title;
-        this.last_move_viewed = 0;
-        this.on_refocus_title = last_title;
-        this.goban.on("state_text", (title: string, show_moves_made_count?: boolean) => {
-            this.on_refocus_title = title;
-            if (show_moves_made_count) {
-                if (!this.goban) {
-                    window.document.title = title;
-                    return;
-                }
-                if (document.hasFocus()) {
-                    this.last_move_viewed = this.goban.engine.getMoveNumber();
-                    window.document.title = title;
+        // We need an initial score for the first display rendering (which is not set in the constructor).
+        // Best to get this from the engine, so we know we have the right structure...
+        this.setState({score: this.goban.engine.computeScore(true)});
+
+        if (preferences.get("dynamic-title")) {
+            /* Title Updates { */
+            let last_title = window.document.title;
+            this.last_move_viewed = 0;
+            this.on_refocus_title = last_title;
+            this.goban.on("state_text", (state) => {
+                this.on_refocus_title = state.title;
+                if (state.show_moves_made_count) {
+                    if (!this.goban) {
+                        window.document.title = state.title;
+                        return;
+                    }
+                    if (document.hasFocus()) {
+                        this.last_move_viewed = this.goban.engine.getMoveNumber();
+                        window.document.title = state.title;
+                    } else {
+                        let diff = this.goban.engine.getMoveNumber() - this.last_move_viewed;
+                        window.document.title = interpolate(_("(%s) moves made"), [diff]);
+                    }
                 } else {
-                    let diff = this.goban.engine.getMoveNumber() - this.last_move_viewed;
-                    window.document.title = interpolate(_("(%s) moves made"), [diff]); ;
+                    window.document.title = state.title;
+                }
+            });
+            /* } */
+        }
+
+
+        this.bindAudioEvents();
+
+
+        this.goban.on("clock", (clock:JGOFClock) => {
+            /* This is the code that draws the count down number on the "hover
+             * stone" for the current player if they are running low on time */
+            let user = data.get('user');
+
+            if (!clock) {
+                return;
+            }
+
+            if (user.anonymous) {
+                return;
+            }
+
+            if (user.id.toString() !== clock.current_player_id) {
+                this.goban.setByoYomiLabel(null);
+                return;
+            }
+
+            let ms_left = 0;
+            let player_clock = clock.current_player === 'black' ? clock.black_clock : clock.white_clock;
+            if (player_clock.main_time > 0) {
+                ms_left = player_clock.main_time;
+                if (this.goban.engine.time_control.system === "byoyomi"
+                    || this.goban.engine.time_control.system === "canadian") {
+                    ms_left = 0;
+                }
+            }  else {
+                ms_left = player_clock.period_time_left || player_clock.block_time_left || 0;
+            }
+
+
+            let seconds = Math.ceil((ms_left - 1) / 1000);
+
+            const every_second_start = preferences.get('sound.countdown.every-second.start') as number;
+
+            if (seconds > 0 && seconds < Math.max(10, every_second_start)) {
+                const count_direction = preferences.get('sound.countdown.byoyomi-direction') as string;
+                let count_direction_auto = 'down';
+                if (count_direction === 'auto') {
+                    count_direction_auto =
+                        (current_language === 'ja' || current_language === 'ko')
+                        ? 'up' : 'down';
+                }
+
+                const count_direction_computed = count_direction !== 'auto' ? count_direction : count_direction_auto;
+
+
+                if (count_direction_computed === 'up') {
+                    if (seconds < every_second_start) {
+                        this.goban.setByoYomiLabel((every_second_start - seconds).toString());
+                    }
+                } else {
+                    this.goban.setByoYomiLabel(seconds.toString());
                 }
             } else {
-                window.document.title = title;
+                this.goban.setByoYomiLabel(null);
             }
-        });
-        /* }}} */
 
-        this.goban.on("advance-to-next-board", () => notification_manager.advanceToNextBoard());
+
+        /*
+        if (minutes === 0 && seconds <= 10) {
+            if (seconds % 2 === 0) {
+                cls += " low_time";
+            }
+
+            if (this.on_game_screen && player_id) {
+                if (window["user"] && player_id === window["user"].id && window["user"].id === this.engine.playerToMove()) {
+                    this.byoyomi_label = "" + seconds;
+                    let last_byoyomi_label = this.byoyomi_label;
+                    if (this.last_hover_square) {
+                        this.__drawSquare(this.last_hover_square.x, this.last_hover_square.y);
+                    }
+                    setTimeout(() => {
+                        if (this.byoyomi_label === last_byoyomi_label) {
+                            this.byoyomi_label = null;
+                            if (this.last_hover_square) {
+                                this.__drawSquare(this.last_hover_square.x, this.last_hover_square.y);
+                            }
+                        }
+                    }, 1100);
+                }
+
+                if (this.mode === "play") {
+                    this.emit('audio-clock', {
+                        seconds_left: seconds,
+                        player_to_move: this.engine.playerToMove(),
+                        clock_player: player_id,
+                        time_control_system: timing_type,
+                        in_overtime: in_overtime,
+                    });
+                }
+            }
+        }
+        */
+
+
+        });
+        this.goban.on("move-made", this.autoadvance);
+        this.goban.on("title", (title) => this.setState({title: title}));
         this.goban.on("update", () => this.sync_state());
         this.goban.on("reset", () => this.sync_state());
         this.goban.on("show-submit", (tf) => {
             this.setState({show_submit: tf});
         });
-        this.goban.on("pause-text", (new_text) => this.setState({
-            "white_pause_text": new_text.white_pause_text,
-            "black_pause_text": new_text.black_pause_text,
-        }));
         this.goban.on("chat", (line) => {
             this.chat_log.push(line);
-            /*
-            if (!(chat_log in this.chats)) {
-                this.chats[chat_log] = [];
+            this.debouncedChatUpdate();
+        });
+        this.goban.on("chat-remove", (obj) => {
+            for (let chat_id of obj.chat_ids) {
+                for (let i = 0; i < this.chat_log.length; ++i) {
+                    if (this.chat_log[i].chat_id === chat_id) {
+                        this.chat_log.splice(i, 1);
+                        break;
+                    }
+                    else {
+                        console.log(chat_id, this.chat_log[i]);
+                    }
+                }
             }
-            this.chats[chat_log].push(line);
-            */
-
             this.debouncedChatUpdate();
         });
         this.goban.on("chat-reset", () => {
-            /*
-            for (let k in this.chats) {
-                this.chats[k] = [];
-            }
-            */
             this.chat_log.length = 0;
             this.debouncedChatUpdate();
         });
@@ -496,53 +581,123 @@ export class Game extends OGSComponent<GameProperties, any> {
                     this.goban.one_click_submit = preferences.get("one-click-submit-correspondence");
                     this.goban.double_click_submit = preferences.get("double-click-submit-correspondence");
                 }
+                this.goban.variation_stone_transparency = preferences.get("variation-stone-transparency");
+                this.goban.visual_undo_request_indicator = preferences.get("visual-undo-request-indicator");
             } catch (e) {
                 console.error(e.stack);
             }
 
-            try {
-                let urls = {};
-
-                for (let color in this.goban.engine.players) {
-                    getPlayerIconURL(this.goban.engine.players[color].id, 64).then((url) => {
-                        urls[this.goban.engine.players[color].id] = url;
-                        this.setState({player_icons: Object.assign({}, this.state.player_icons, urls)});
-                    });
-                }
-            } catch (e) {
-            }
             this.sync_state();
         });
+
+        if (this.move_number !== null) {
+            this.goban.once("gamedata", () => {
+                this.nav_goto_move(this.move_number);
+            });
+        }
+
+        this.goban.on("auto-resign", (data) => {
+            if (this.goban.engine && data.player_id === this.goban.engine.players.black.id) {
+                this.setState({ black_auto_resign_expiration: new Date(data.expiration - get_network_latency() + get_clock_drift() ) });
+            }
+            if (this.goban.engine && data.player_id === this.goban.engine.players.white.id) {
+                this.setState({ white_auto_resign_expiration: new Date(data.expiration - get_network_latency() + get_clock_drift()) });
+            }
+        });
+        this.goban.on("clear-auto-resign", (data) => {
+            if (this.goban.engine && data.player_id === this.goban.engine.players.black.id) {
+                this.setState({ black_auto_resign_expiration: null });
+            }
+            if (this.goban.engine && data.player_id === this.goban.engine.players.white.id) {
+                this.setState({ white_auto_resign_expiration:null });
+            }
+        });
+
         if (this.review_id) {
-            this.goban.on("review.updated", (e) => {
+            this.goban.on("review.updated", () => {
                 this.sync_state();
-                if (this.goban.engine.players.white.id && !this.state.player_icons[this.goban.engine.players.white.id]) {
-                    for (let color in this.goban.engine.players) {
-                        getPlayerIconURL(this.goban.engine.players[color].id, 64).then((url) => {
-                            setTimeout(() => {
-                                let urls = {};
-                                urls[this.goban.engine.players[color].id] = url;
-                                this.setState({player_icons: Object.assign({}, this.state.player_icons, urls)});
-                            }, 1);
-                        });
-                    }
-                }
             });
             this.goban.on("review.sync-to-current-move", () => {
                 this.syncToCurrentReviewMove();
             });
+
+            let stashed_move_string = null;
+            let stashed_review_id = null;
+            /* If we lose connection, save our place when we reconnect so we can jump to it. */
+            this.goban.on("review.load-start", () => {
+                if (this.goban.review_controller_id !== data.get("user").id) {
+                    return;
+                }
+
+                stashed_review_id = this.goban.review_id;
+                stashed_move_string = this.goban.engine.cur_move.getMoveStringToThisPoint();
+                if (stashed_move_string.length === 0) {
+                    stashed_review_id = null;
+                    stashed_move_string = null;
+                }
+            });
+            this.goban.on("review.load-end", () => {
+                if (this.goban.review_controller_id !== data.get("user").id) {
+                    return;
+                }
+
+                if (stashed_move_string && stashed_review_id === this.goban.review_id) {
+                    let cur_move_string = this.goban.engine.cur_move.getMoveStringToThisPoint();
+
+                    let prev_last_review_message = this.goban.getLastReviewMessage();
+                    let moves = GoMath.decodeMoves(stashed_move_string, this.goban.width, this.goban.height);
+
+                    this.goban.engine.jumpTo(this.goban.engine.move_tree);
+                    for (let move of moves) {
+                        if (move.edited) {
+                            this.goban.engine.editPlace(
+                                move.x,
+                                move.y,
+                                move.color,
+                                false
+                            );
+                        }
+                        else {
+                            this.goban.engine.place(
+                                move.x,
+                                move.y,
+                                false,
+                                false,
+                                true,
+                                false,
+                                false
+                            );
+                        }
+                    }
+                    /* This is designed to kinda work around race conditions
+                     * where we start sending out review moves before we have
+                     * authenticated */
+                    setTimeout(() => {
+                        this.goban.setLastReviewMessage(prev_last_review_message);
+                        this.goban.syncReviewMove();
+                    }, 100);
+                }
+            });
         }
 
-
         if (this.game_id) {
-            get(`games/${this.game_id}`)
+            get("games/%%", this.game_id)
             .then((game) => {
                 if (game.players.white.id) {
                     player_cache.update(game.players.white, true);
+                    this.white_username = game.players.white.username;
                 }
                 if (game.players.black.id) {
                     player_cache.update(game.players.black, true);
+                    this.black_username = game.players.black.username;
                 }
+                if (this.white_username && this.black_username && !preferences.get("dynamic-title")) {
+                    this.on_refocus_title = this.black_username + " vs " + this.white_username;
+                    window.document.title = this.on_refocus_title;
+                }
+                this.creator_id = game.creator;
+                this.ladder_id = game.ladder;
+                this.tournament_id = game.tournament;
 
                 let review_list = [];
                 for (let k in game.gamedata.reviews) {
@@ -560,73 +715,482 @@ export class Game extends OGSComponent<GameProperties, any> {
 
                 this.setState({
                     review_list: review_list,
+                    annulled: game.annulled,
+                    historical_black: game.historical_ratings.black,
+                    historical_white: game.historical_ratings.white,
                 });
             })
             .catch(ignore);
         }
-    }}}
+        if (this.review_id) {
+            get("reviews/%%", this.review_id)
+            .then((review) => {
+                if (review.game) {
+                    this.setState({
+                        historical_black: review.game.historical_ratings.black,
+                        historical_white: review.game.historical_ratings.white,
+                    });
+                }
+            })
+            .catch(ignore);
+        }
+    }
+    private bindAudioEvents():void { // called by init
+        let user = data.get('user');
+        //this.goban.on('audio-game-started', (obj:{ player_id: number }) => sfx.play("game_started"));
+
+        this.goban.on('audio-enter-stone-removal', () => {
+            sfx.stop();
+            sfx.play('remove_the_dead_stones');
+        });
+        //this.goban.on('audio-enter-stone-removal', () => sfx.play('stone_removal'));
+        this.goban.on('audio-resume-game-from-stone-removal', () => {
+            sfx.stop();
+            sfx.play('game_resumed');
+        });
+
+        this.goban.on('audio-game-paused', () => {
+            console.log(this.goban.engine.phase);
+            if (this.goban.engine.phase === 'play') {
+                sfx.play('game_paused');
+            }
+        });
+        this.goban.on('audio-game-resumed', () => {
+            console.log(this.goban.engine.phase);
+            if (this.goban.engine.phase === 'play') {
+                sfx.play('game_resumed');
+            }
+        });
+        this.goban.on('audio-stone', (stone) => sfx.playStonePlacementSound(stone.x, stone.y, stone.width, stone.height, stone.color));
+        this.goban.on('audio-pass', () => sfx.play("pass"));
+        this.goban.on('audio-undo-requested', () => sfx.play('undo_requested'));
+        this.goban.on('audio-undo-granted', () => sfx.play('undo_granted'));
+
+        this.goban.on('audio-capture-stones', (obj:{
+            count: number,
+            already_captured: number
+        }) => {
+            let sound:ValidSound = 'error';
+            if (obj.already_captured <= 2) {
+                switch (obj.count) {
+                    case 1: sound = 'capture-1'; break;
+                    case 2: sound = 'capture-2'; break;
+                    case 3: sound = 'capture-3'; break;
+                    case 4: sound = 'capture-4'; break;
+                    case 5: sound = 'capture-5'; break;
+                    default:
+                        sound = 'capture-handful'; break;
+                }
+            } else {
+                switch (obj.count) {
+                    case 1: sound = 'capture-1-pile'; break;
+                    case 2: sound = 'capture-2-pile'; break;
+                    case 3: sound = 'capture-3-pile'; break;
+                    case 4: sound = 'capture-4-pile'; break;
+                    default:
+                        sound = 'capture-handful'; break;
+                }
+            }
+
+            sfx.play(sound);
+        });
+
+        { // Announce when *we* have disconnected / reconnected
+            let disconnected = false;
+            let debounce: ReturnType<typeof setTimeout> | null;
+            let cur_sound:SFXSprite;
+            let can_play_disconnected_sound = false;
+
+            setTimeout(() => can_play_disconnected_sound = true, 3000);
+
+            this.goban.on('audio-disconnected', () => {
+                if (!can_play_disconnected_sound) {
+                    return;
+                }
+                if (cur_sound) {
+                    cur_sound.stop();
+                }
+                if (debounce) {
+                    clearTimeout(debounce);
+                }
+                debounce = setTimeout(() => {
+                    cur_sound = sfx.play('disconnected');
+                    disconnected = true;
+                    debounce = null;
+                }, 5000);
+            });
+            this.goban.on('audio-reconnected', () => {
+                if (!can_play_disconnected_sound) {
+                    return;
+                }
+                if (cur_sound) {
+                    cur_sound.stop();
+                }
+                if (debounce) {
+                    clearTimeout(debounce);
+                    debounce = null;
+                    return;
+                }
+                if (!disconnected) {
+                    return;
+                }
+                disconnected = false;
+                cur_sound = sfx.play('reconnected');
+            });
+        }
+
+
+        { // Announce when other people disconnect / reconnect
+            let can_play_disconnected_sound = false;
+            let debounce: ReturnType<typeof setTimeout> | null;
+            let cur_sound:SFXSprite;
+
+            setTimeout(() => can_play_disconnected_sound = true, 3000);
+
+            this.goban.on('audio-other-player-disconnected', (who: { player_id: number }) => {
+                console.log("Player :", who.player_id, " disconnected");
+                if (!can_play_disconnected_sound) {
+                    return;
+                }
+                if (who.player_id === user.id) {
+                    // i don't *think* this should ever happen..
+                    return;
+                }
+
+                if (cur_sound) {
+                    cur_sound.stop();
+                }
+                if (debounce) {
+                    clearTimeout(debounce);
+                    debounce = null;
+                    return;
+                }
+
+                debounce = setTimeout(() => {
+                    if (this.goban.engine.playerColor(user?.id) === 'invalid') {
+                        // spectating? don't say opponent
+                        cur_sound = sfx.play('player_disconnected');
+                    } else {
+                        cur_sound = sfx.play('your_opponent_has_disconnected');
+                    }
+                    debounce = null;
+                }, 5000); // don't play "your opponent has disconnected" if they are just reloading the page
+            });
+            this.goban.on('audio-other-player-reconnected', (who: { player_id: number }) => {
+                console.log("Player :", who.player_id, " reconnected");
+                if (!can_play_disconnected_sound) {
+                    return;
+                }
+                if (who.player_id === user.id) {
+                    // i don't *think* this should ever happen..
+                    return;
+                }
+                if (cur_sound) {
+                    cur_sound.stop();
+                }
+
+                if (debounce) {
+                    clearTimeout(debounce);
+                    debounce = null;
+                    return;
+                }
+                if (this.goban.engine.playerColor(user?.id) === 'invalid') {
+                    // spectating? don't say opponent
+                    cur_sound = sfx.play('player_reconnected');
+                } else {
+                    cur_sound = sfx.play('your_opponent_has_reconnected');
+                }
+            });
+        }
+
+        this.goban.on('audio-game-ended', (winner:'black' | 'white' | 'tie') => {
+            let user = data.get('user');
+            let color = this.goban.engine.playerColor(user?.id);
+
+            if (winner === 'tie') {
+                sfx.play('tie');
+            } else {
+                if (color === 'invalid') {
+                    if (winner === 'black') {
+                        sfx.play('black_wins');
+                    }
+                    if (winner === 'white') {
+                        sfx.play('white_wins');
+                    }
+                } else {
+                    console.log("winner: ", winner, " color ", color);
+                    if (winner === color) {
+                        sfx.play('you_have_won');
+                    } else {
+                        //sfx.play('you_have_lost');
+
+                        if (winner === 'black') {
+                            sfx.play('black_wins');
+                        }
+                        if (winner === 'white') {
+                            sfx.play('white_wins');
+                        }
+                    }
+                }
+            }
+        });
+
+        let last_audio_played:ValidSound = 'error';
+        let overtime_announced:boolean = false;
+        let last_period_announced = -1;
+        let first_audio_event_received:boolean = false;
+        // this exists to prevent some early announcements when we reconnect
+        setTimeout(() => first_audio_event_received = true, 1000);
+
+        this.goban.on('audio-clock', (audio_clock_event: AudioClockEvent) => {
+            let user = data.get('user');
+            if (user.anonymous) {
+                //console.log("anon");
+                return;
+            }
+
+            if (this.state.paused) {
+                //console.log("paused");
+                return;
+            }
+
+            if (user.id.toString() !== audio_clock_event.player_id.toString()) {
+                //console.log("not user");
+                return;
+            }
+
+            const tick_tock_start = preferences.get('sound.countdown.tick-tock.start') as number;
+            const ten_seconds_start = preferences.get('sound.countdown.ten-seconds.start') as number;
+            const five_seconds_start = preferences.get('sound.countdown.five-seconds.start') as number;
+            const every_second_start = preferences.get('sound.countdown.every-second.start') as number;
+            const count_direction = preferences.get('sound.countdown.byoyomi-direction') as string;
+            let count_direction_auto = 'down';
+            if (count_direction === 'auto') {
+                count_direction_auto =
+                    (current_language === 'ja' || current_language === 'ko')
+                    ? 'up' : 'down';
+            }
+
+            const count_direction_computed = count_direction !== 'auto' ? count_direction : count_direction_auto;
+            const time_control = this.goban.engine.time_control;
+
+            switch (time_control.system) {
+                case 'none':
+                    return;
+
+                case 'canadian':
+                case 'byoyomi':
+                    if (!audio_clock_event.in_overtime && !(time_control.system === 'byoyomi' && time_control.periods === 0)) {
+                        // Don't count down main time for byoyomi and canadian clocks
+                        //console.log("not doing announcement");
+                        return;
+                    }
+
+                case 'simple':
+                case 'absolute':
+                case 'fischer':
+                    break;
+            }
+
+
+
+            let audio_to_play:ValidSound;
+            let seconds_left:number = audio_clock_event.countdown_seconds;
+            let numeric_announcement:boolean = false;
+            let force_play:boolean = false;
+
+            if (audio_clock_event.in_overtime && !overtime_announced) {
+                force_play = true;
+                overtime_announced = true;
+                if (sfx.hasSoundSample('start_counting')) {
+                    audio_to_play = 'start_counting';
+                } else {
+                    if (time_control.system === 'byoyomi') {
+                        audio_to_play = 'byoyomi';
+                        last_period_announced = audio_clock_event.clock.periods_left;
+                    }
+                    else {
+                        audio_to_play = 'overtime';
+                    }
+                }
+            }
+            else if (audio_clock_event.in_overtime && time_control.system === 'byoyomi' && last_period_announced !== audio_clock_event.clock.periods_left) {
+                force_play = true;
+                last_period_announced = audio_clock_event.clock.periods_left;
+                audio_to_play = 'period';
+                if (audio_clock_event.clock.periods_left === 5) {
+                    audio_to_play = '5_periods_left';
+                }
+                if (audio_clock_event.clock.periods_left === 4) {
+                    audio_to_play = '4_periods_left';
+                }
+                if (audio_clock_event.clock.periods_left === 3) {
+                    audio_to_play = '3_periods_left';
+                }
+                if (audio_clock_event.clock.periods_left === 2) {
+                    audio_to_play = '2_periods_left';
+                }
+                if (audio_clock_event.clock.periods_left === 1) {
+                    audio_to_play = 'last_period';
+                }
+            }
+            else {
+                if (tick_tock_start > 0 && seconds_left <= tick_tock_start) {
+                    audio_to_play = seconds_left % 2 ? 'tick' : 'tock';
+                    if (seconds_left === 3) {
+                        audio_to_play = 'tock-3left';
+                    }
+                    if (seconds_left === 2) {
+                        audio_to_play = 'tick-2left';
+                    }
+                    if (seconds_left === 1) {
+                        audio_to_play = 'tock-1left';
+                    }
+                }
+
+                if (ten_seconds_start > 0 && seconds_left <= ten_seconds_start && seconds_left % 10 === 0) {
+                    audio_to_play = seconds_left.toString() as ValidSound;
+                    numeric_announcement = true;
+                }
+                if (five_seconds_start > 0 && seconds_left <= five_seconds_start && seconds_left % 5 === 0) {
+                    audio_to_play = seconds_left.toString() as ValidSound;
+                    numeric_announcement = true;
+                }
+                if (every_second_start > 0 && seconds_left <= every_second_start) {
+                    audio_to_play = seconds_left.toString() as ValidSound;
+                    numeric_announcement = true;
+                }
+
+                if (numeric_announcement && time_control.system === 'byoyomi' && count_direction_computed === 'up') {
+                    if (seconds_left > 60) {
+                        audio_to_play = undefined;
+                    }
+                    else {
+                        //let period_time = Math.min(60, time_control.period_time);
+
+                        // handle counting up
+
+                        if (seconds_left < every_second_start) {
+                            audio_to_play = (every_second_start - seconds_left).toString() as ValidSound;
+                        }
+                        else {
+                            let count_from = Math.max(ten_seconds_start, five_seconds_start);
+
+                            if (ten_seconds_start > 0 && seconds_left <= ten_seconds_start && seconds_left % 10 === 0 && seconds_left !== every_second_start) {
+                                //audio_to_play = (period_time - parseInt(audio_to_play)).toString() as ValidSound;
+                                audio_to_play = (count_from - parseInt(audio_to_play)).toString() as ValidSound;
+                            }
+                            else if (five_seconds_start > 0 && seconds_left <= five_seconds_start && seconds_left % 5 === 0 && seconds_left !== every_second_start) {
+                                audio_to_play = (count_from - parseInt(audio_to_play)).toString() as ValidSound;
+                            }
+                            else if (tick_tock_start > 0 && seconds_left <= tick_tock_start) {
+                                audio_to_play = seconds_left % 2 ? 'tick' : 'tock';
+                            } else {
+                                audio_to_play = undefined;
+                            }
+
+                            if (audio_to_play === '0') {
+                                audio_to_play = undefined;
+                            }
+                        }
+                    }
+                }
+            }
+
+            if (!first_audio_event_received) {
+                if (audio_to_play) {
+                    last_audio_played = audio_to_play;
+                }
+                first_audio_event_received = true;
+                return;
+            }
+
+            if (audio_to_play && last_audio_played !== audio_to_play) {
+                last_audio_played = audio_to_play;
+                sfx.play(audio_to_play);
+            }
+        });
+    }
+
 
     /*** Common stuff ***/
-    nav_up() {{{
+    nav_up() {
         this.checkAndEnterAnalysis();
         this.goban.prevSibling();
         this.goban.syncReviewMove();
-    }}}
-    nav_down() {{{
+    }
+    nav_down() {
         this.checkAndEnterAnalysis();
         this.goban.nextSibling();
         this.goban.syncReviewMove();
-    }}}
-    nav_first() {{{
+    }
+    nav_first() {
+        let last_estimate_move = this.stopEstimatingScore();
         this.stopAutoplay();
-        this.checkAndEnterAnalysis();
+        this.checkAndEnterAnalysis(last_estimate_move);
         this.goban.showFirst();
         this.goban.syncReviewMove();
-    }}}
-    nav_prev_10() {{{
+    }
+    nav_prev_10() {
+        let last_estimate_move = this.stopEstimatingScore();
         this.stopAutoplay();
-        this.checkAndEnterAnalysis();
+        this.checkAndEnterAnalysis(last_estimate_move);
         for (let i = 0; i < 10; ++i) {
             this.goban.showPrevious();
         }
         this.goban.syncReviewMove();
-    }}}
-    nav_prev() {{{
+    }
+    nav_prev() {
+        let last_estimate_move = this.stopEstimatingScore();
         this.stopAutoplay();
-        this.checkAndEnterAnalysis();
+        this.checkAndEnterAnalysis(last_estimate_move);
         this.goban.showPrevious();
         this.goban.syncReviewMove();
-    }}}
-    nav_next(event?: React.MouseEvent<any>, dont_stop_autoplay?: boolean) {{{
+    }
+    nav_next(event?: React.MouseEvent<any>, dont_stop_autoplay?: boolean) {
+        let last_estimate_move = this.stopEstimatingScore();
         if (!dont_stop_autoplay) {
             this.stopAutoplay();
         }
-        this.checkAndEnterAnalysis();
+        this.checkAndEnterAnalysis(last_estimate_move);
         this.goban.showNext();
         this.goban.syncReviewMove();
-    }}}
-    nav_next_10() {{{
+    }
+    nav_next_10() {
+        let last_estimate_move = this.stopEstimatingScore();
         this.stopAutoplay();
-        this.checkAndEnterAnalysis();
+        this.checkAndEnterAnalysis(last_estimate_move);
         for (let i = 0; i < 10; ++i) {
             this.goban.showNext();
         }
         this.goban.syncReviewMove();
-    }}}
-    nav_last() {{{
+    }
+    nav_last() {
+        let last_estimate_move = this.stopEstimatingScore();
         this.stopAutoplay();
-        this.checkAndEnterAnalysis();
+        this.checkAndEnterAnalysis(last_estimate_move);
         this.goban.jumpToLastOfficialMove();
         this.goban.syncReviewMove();
-    }}}
-    nav_play_pause() {{{
+    }
+    nav_play_pause() {
         if (this.state.autoplaying) {
             this.stopAutoplay();
         } else {
             this.startAutoplay();
         }
-    }}}
-    stopAutoplay() {{{
+    }
+    nav_goto_move = (move_number:number) => {
+        let last_estimate_move = this.stopEstimatingScore();
+        this.stopAutoplay();
+        this.checkAndEnterAnalysis(last_estimate_move);
+        this.goban.showFirst(move_number > 0);
+        for (let i = 0; i < move_number; ++i) {
+            this.goban.showNext(i !== move_number - 1);
+        }
+        this.goban.syncReviewMove();
+    }
+
+    stopAutoplay() {
         if (this.autoplay_timer) {
             clearTimeout(this.autoplay_timer);
             this.autoplay_timer = null;
@@ -634,8 +1198,8 @@ export class Game extends OGSComponent<GameProperties, any> {
         if (this.state.autoplaying) {
             this.setState({autoplaying: false});
         }
-    }}}
-    startAutoplay() {{{
+    }
+    startAutoplay() {
         if (this.autoplay_timer) {
             this.stopAutoplay();
         }
@@ -656,34 +1220,41 @@ export class Game extends OGSComponent<GameProperties, any> {
         this.autoplay_timer = setTimeout(step, Math.min(1000, preferences.get("autoplay-delay")));
 
         this.setState({autoplaying: true});
-    }}}
+    }
 
-    checkAndEnterAnalysis() {{{
-        if (this.goban.mode === "play" && this.goban.engine.phase !== "stone removal" && (!this.goban.engine.config.disable_analysis || this.goban.engine.phase === "finished")) {
+    checkAndEnterAnalysis(move?:MoveTree) {
+        if (this.goban.mode === "play" && this.goban.engine.phase !== "stone removal" && (!this.goban.isAnalysisDisabled() || this.goban.engine.phase === "finished")) {
             this.setState({variation_name: ""});
             this.goban.setMode("analyze");
+            if (move) {
+                this.goban.engine.jumpTo(move);
+            }
             return true;
         }
         if (this.goban.mode === "analyze") {
+            if (move) {
+                this.goban.engine.jumpTo(move);
+            }
             return true;
         }
         return false;
-    }}}
-    recenterGoban() {{{
+    }
+    recenterGoban() {
         let m = this.goban.computeMetrics();
         $(this.goban_div).css({
-            top: Math.ceil(this.refs.goban_container.offsetHeight - m.height) / 2,
-            left: Math.ceil(this.refs.goban_container.offsetWidth - m.width) / 2,
+            top: Math.ceil(this.ref_goban_container.offsetHeight - m.height) / 2,
+            left: Math.ceil(this.ref_goban_container.offsetWidth - m.width) / 2,
         });
-    }}}
-    onResize = (no_debounce?: boolean) => {{{
-        //Math.min(this.refs.goban_container.offsetWidth, this.refs.goban_container.offsetHeight)
-        if (this.computeViewMode() !== this.state.view_mode || goban_view_squashed() !== this.state.squashed) {
-            this.setState({
-                squashed: goban_view_squashed(),
-                view_mode: this.computeViewMode(),
-            });
-
+    }
+    onResize = (no_debounce: boolean = false, skip_state_update: boolean = false) => {
+        //Math.min(this.ref_goban_container.offsetWidth, this.ref_goban_container.offsetHeight)
+        if (!skip_state_update) {
+            if (this.computeViewMode() !== this.state.view_mode || goban_view_squashed() !== this.state.squashed) {
+                this.setState({
+                    squashed: goban_view_squashed(),
+                    view_mode: this.computeViewMode(),
+                });
+            }
         }
 
         if (this.resize_debounce) {
@@ -691,29 +1262,28 @@ export class Game extends OGSComponent<GameProperties, any> {
             this.resize_debounce = null;
         }
 
-        /*
         if (!this.goban) {
             return;
         }
-        */
 
         this.goban.setGameClock(this.goban.last_clock); /* this forces a clock refresh, important after a layout when the dom could have been replaced */
 
-        if (!this.refs.goban_container) {
+        if (!this.ref_goban_container) {
             return;
         }
 
         if (this.computeViewMode() === "portrait") {
-            if (this.refs.goban_container.style.minHeight !== `${win.width() + 10}px`) {
-                this.refs.goban_container.style.minHeight = `${win.width() + 10}px`;
+            let w = win.width() + 10;
+            if (this.ref_goban_container.style.minHeight !== `${w}px`) {
+                this.ref_goban_container.style.minHeight = `${w}px`;
             }
         } else {
-            if (this.refs.goban_container.style.minHeight !== `initial`) {
-                this.refs.goban_container.style.minHeight = `initial`;
+            if (this.ref_goban_container.style.minHeight !== `initial`) {
+                this.ref_goban_container.style.minHeight = `initial`;
             }
-            let w = this.refs.goban_container.offsetWidth;
-            if (this.refs.goban_container.style.flexBasis !== `${w}px`) {
-                this.refs.goban_container.style.flexBasis = `${w}px`;
+            let w = this.ref_goban_container.offsetWidth;
+            if (this.ref_goban_container.style.flexBasis !== `${w}px`) {
+                this.ref_goban_container.style.flexBasis = `${w}px`;
             }
         }
 
@@ -723,13 +1293,14 @@ export class Game extends OGSComponent<GameProperties, any> {
             return;
         }
 
+
         this.goban.setSquareSizeBasedOnDisplayWidth(
-            Math.min(this.refs.goban_container.offsetWidth, this.refs.goban_container.offsetHeight)
+            Math.min(this.ref_goban_container.offsetWidth, this.ref_goban_container.offsetHeight)
         );
 
         this.recenterGoban();
-    }}}
-    setAnalyzeTool(tool, subtool) {{{
+    }
+    setAnalyzeTool(tool, subtool) {
         if (this.checkAndEnterAnalysis()) {
             $("#game-analyze-button-bar .active").removeClass("active");
             $("#game-analyze-" + tool + "-tool").addClass("active");
@@ -755,13 +1326,16 @@ export class Game extends OGSComponent<GameProperties, any> {
 
         this.sync_state();
         return false;
-    }}}
-    setLabelHandler = (event) => {{{
-        if (document.activeElement.tagName === "INPUT" ||
-            document.activeElement.tagName === "TEXTAREA" ||
-            document.activeElement.tagName === "SELECT"
-        ) {
-            return;
+    }
+    setLabelHandler = (event) => {
+        try {
+            if (document.activeElement.tagName === "INPUT" ||
+                document.activeElement.tagName === "TEXTAREA" ||
+                document.activeElement.tagName === "SELECT"
+            ) {
+                return;
+            }
+        } catch (e) {
         }
 
         if (this.goban && this.goban.mode === "analyze") {
@@ -772,66 +1346,14 @@ export class Game extends OGSComponent<GameProperties, any> {
                 }
             }
         }
-    }}}
-    computeViewMode(ignore_zen_mode?): ViewMode {{{
-        if (!ignore_zen_mode && this.state.zen_mode) {
-            return "zen";
-        }
-
+    }
+    computeViewMode(): ViewMode {
         return goban_view_mode();
-    }}}
-    computeSquashed(): boolean {{{
+    }
+    computeSquashed(): boolean {
         return win.height() < 680;
-    }}}
-    getAdClass(): AdClass {{{
-        if (!this.state.show_ads) {
-            return "no-ads";
-        }
-
-        if (this.ad_class) {
-            return this.ad_class;
-        }
-
-        let w = win.width() || 1;
-        let h = win.height() || 1;
-
-        switch (this.computeViewMode()) {
-            case "portrait":
-                {
-                    if (w >= 728) {
-                        return this.ad_class = "leaderboard";
-                    }
-                    return this.ad_class = "mobile-banner";
-                }
-
-            case "square":
-                {
-                    if (h < 700) {
-                        return this.ad_class = "mobile-banner";
-                    }
-                    if (w >= 1280) {
-                        return this.ad_class = "large-rectangle";
-                    }
-                    return this.ad_class = "medium-rectangle";
-                }
-
-            case "wide":
-                {
-                    if (w >= 1900) {
-                        return  this.ad_class = "half-page";
-                        //return this.ad_class = 'large-rectangle';
-                    }
-                    return  this.ad_class = "wide-skyscraper";
-                    //return this.ad_class = 'medium-rectangle';
-                }
-
-
-            case "zen":
-                return this.ad_class = null;
-
-        }
-    }}}
-    toggleCoordinates() {{{
+    }
+    toggleCoordinates() {
         let goban = this.goban;
 
         let label_position = preferences.get("label-positioning");
@@ -851,50 +1373,79 @@ export class Game extends OGSComponent<GameProperties, any> {
         goban.draw_bottom_labels = label_position === "all" || label_position.indexOf("bottom") >= 0;
         this.onResize(true);
         goban.redraw(true);
-    }}}
-    showGameInfo() {{{
-        openGameInfoModal(this.goban.engine);
-    }}}
-    showLinkModal() {{{
+    }
+    showGameInfo() {
+        for (let k of ['komi', 'rules', 'handicap']) {
+            this.goban.config[k] = this.goban.engine.config[k];
+        }
+        openGameInfoModal(
+            this.goban.config,
+            this.state[`historical_black`] || this.goban.engine.players.black,
+            this.state[`historical_white`] || this.goban.engine.players.white,
+            this.state.annulled, this.creator_id || this.goban.review_owner_id);
+    }
+
+    toggleShowTiming = () => {
+        this.setState({show_game_timing: !this.state.show_game_timing});
+    }
+
+    showLinkModal() {
         openGameLinkModal(this.goban);
-    }}}
-    gameAnalyze() {{{
+    }
+    gameAnalyze() {
         let user = data.get("user");
-        if (this.goban.engine.disable_analysis && this.goban.engine.phase !== "finished") {
+        if (this.goban.isAnalysisDisabled() && this.goban.engine.phase !== "finished") {
             //swal(_("Analysis mode has been disabled for this game"));
         } else {
-            if (this.state.estimating_score) {
-                this.stopEstimatingScore();
-            }
+            let last_estimate_move = this.stopEstimatingScore();
 
             this.goban.setMode("analyze");
+            if (last_estimate_move) {
+                this.goban.engine.jumpTo(last_estimate_move);
+            }
         }
-    }}}
-    fork() {{{
-        if (this.goban.engine.disable_analysis && this.goban.engine.phase !== "finished") {
+    }
+    fork() {
+        if (this.goban.isAnalysisDisabled() && this.goban.engine.phase !== "finished") {
             //swal(_("Game forking has been disabled for this game since analysis mode has been disabled"));
         } else {
             challengeFromBoardPosition(this.goban);
         }
-    }}}
-    toggleZenMode() {{{
+    }
+    toggleZenMode() {
         if (this.state.zen_mode) {
+            let body = document.getElementsByTagName('body')[0];
+            body.classList.remove("zen");   //remove the class
             this.setState({
                 zen_mode: false,
-                view_mode: this.computeViewMode(true),
+                view_mode: this.computeViewMode(),
             });
         } else {
+            let body = document.getElementsByTagName('body')[0];
+            body.classList.add("zen");   //add the class
             this.setState({
                 zen_mode: true,
-                view_mode: "zen",
+                view_mode: this.computeViewMode(),
             });
         }
         this.onResize();
-    }}}
-    togglePortraitTab() {{{
-        if (Perf) {
-            Perf.start();
+    }
+    toggleAIReview = () => {
+        preferences.set('ai-review-enabled', !this.state.ai_review_enabled);
+        if (this.state.ai_review_enabled) {
+            this.goban.setHeatmap(null);
+            this.goban.setColoredCircles(null);
+            let move_tree = this.goban.engine.move_tree;
+            while (move_tree.next(true)) {
+                move_tree = move_tree.next(true);
+                move_tree.clearMarks();
+            }
+            this.goban.redraw();
+            this.sync_state();
         }
+        this.setState({ ai_review_enabled: !this.state.ai_review_enabled });
+    }
+    togglePortraitTab() {
         let portrait_tab = null;
         switch (this.state.portrait_tab) {
             case "game":
@@ -912,41 +1463,33 @@ export class Game extends OGSComponent<GameProperties, any> {
 
         this.setState({portrait_tab: portrait_tab});
         this.onResize();
-        if (Perf) {
-        setTimeout(() => {
-            Perf.stop();
-            window["p"] = Perf.getLastMeasurements();
-            Perf.printExclusive(Perf.getLastMeasurements());
-            Perf.printWasted(Perf.getLastMeasurements());
-        }, 500);
-        }
-    }}}
-    setPencilColor(ev) {{{
+    }
+    setPencilColor(ev) {
         let color = (ev.target as HTMLInputElement).value;
         if (this.goban.analyze_tool === "draw") {
             this.goban.analyze_subtool = color;
         }
         this.setState({analyze_pencil_color: color});
-    }}}
-    updateVariationName(ev) {{{
+    }
+    updateVariationName(ev) {
         this.setState({variation_name: (ev.target as HTMLInputElement).value});
-    }}}
-    updateMoveText = (ev) => {{{
+    }
+    updateMoveText = (ev) => {
         this.setState({move_text: ev.target.value});
         this.goban.syncReviewMove(null, ev.target.value);
-    }}}
-    debouncedChatUpdate() {{{
+    }
+    debouncedChatUpdate() {
         if (this.chat_update_debounce) {
             return;
         }
         this.chat_update_debounce = setTimeout(() => {
             this.chat_update_debounce = null;
-            if (this.refs.chat) {
-                this.refs.chat.forceUpdate();
+            if (this.ref_chat) {
+                this.ref_chat.forceUpdate();
             }
         }, 1);
-    }}}
-    shareAnalysis() {{{
+    }
+    shareAnalysis() {
         let diff = this.goban.engine.getMoveDiff();
         let str;
         let name = this.state.variation_name;
@@ -1008,28 +1551,36 @@ export class Game extends OGSComponent<GameProperties, any> {
         }
 
         if (!data.get("user").anonymous) {
-            goban.sendChat(analysis, this.refs.chat.state.chat_log);
+            goban.sendChat(analysis, this.ref_chat.state.chat_log);
             this.last_analysis_sent = analysis;
         } else {
-            goban.message("Can't send to the " + this.refs.chat.state.chat_log  + " chat_log");
+            goban.message("Can't send to the " + this.ref_chat.state.chat_log  + " chat_log");
         }
-    }}}
-    downloadSGF() {{{
+    }
+    openACL = () => {
         if (this.game_id) {
-            window.open(api1(`games/${this.game_id}/sgf`), "_blank");
-        } else {
-            window.open(api1(`reviews/${this.review_id}/sgf`), "_blank");
+            openACLModal({ game_id: this.game_id });
         }
-    }}}
-    openACL = () => {{{
-        openACLModal(this.game_id, this.review_id, this.goban.engine);
-    }}}
+        else if (this.review_id) {
+            openACLModal({ review_id: this.review_id });
+        }
+    }
 
-    popupScores(color) {{{
+    popupScores() {
         let goban = this.goban;
 
-        this.orig_marks = JSON.stringify(goban.engine.cur_move.getAllMarks());
-        goban.engine.cur_move.clearMarks();
+        if (goban.engine.cur_move) {
+            this.orig_marks = JSON.stringify(goban.engine.cur_move.getAllMarks());
+            goban.engine.cur_move.clearMarks();
+        } else {
+            this.orig_marks = null;
+        }
+
+        this._popupScores('black');
+        this._popupScores('white');
+    }
+    _popupScores(color) {
+        let goban = this.goban;
 
         let only_prisoners = false;
         let scores = goban.engine.computeScore(only_prisoners);
@@ -1071,20 +1622,31 @@ export class Game extends OGSComponent<GameProperties, any> {
         }
 
         $("#" + color + "-score-details").html(html);
-    }}}
-    hideScores(color) {{{
+        this.setState({
+            show_score_breakdown: true
+        });
+    }
+    hideScores() {
         let goban = this.goban;
 
         if (!this.showing_scores) {
             goban.hideScores();
         }
-        goban.engine.cur_move.setAllMarks(JSON.parse(this.orig_marks));
+        if (goban.engine.cur_move) {
+            goban.engine.cur_move.setAllMarks(JSON.parse(this.orig_marks));
+        }
         goban.redraw();
-        $("#" + color + "-score-details").children().remove();
-    }}}
+
+        $("#black-score-details").children().remove();
+        $("#white-score-details").children().remove();
+
+        this.setState({
+            show_score_breakdown: false
+        });
+    }
 
     /*** Game stuff ***/
-    reviewAdded(review) {{{
+    reviewAdded(review) {
         let review_list = [];
         for (let r of this.state.review_list) {
             review_list.push(r);
@@ -1097,22 +1659,25 @@ export class Game extends OGSComponent<GameProperties, any> {
             return a.owner.ranking - b.owner.ranking;
         });
         this.setState({review_list: review_list});
-    }}}
-    handleEscapeKey() {{{
+        if (this.goban?.engine?.phase === "finished") {
+            sfx.play('review_started');
+        }
+    }
+    handleEscapeKey() {
         if (this.state.zen_mode) {
             this.toggleZenMode();
         }
 
-        if (this.goban && !this.goban.engine.config.original_sgf) {
+        if (this.goban) {
             if (this.goban.mode === "score estimation") {
                 this.leaveScoreEstimation();
-            } else if (this.goban.mode === "analyze") {
+            } else if (this.goban.mode === "analyze" && this.game_id) {
                 this.goban.setMode("play");
                 this.sync_state();
             }
         }
-    }}}
-    sync_state() {{{
+    }
+    sync_state() {
         let new_state: any = {
             game_id: this.game_id,
             review_id: this.review_id,
@@ -1139,10 +1704,10 @@ export class Game extends OGSComponent<GameProperties, any> {
             new_state.phase = engine.phase;
             new_state.title = goban.title;
             new_state.score_estimate = goban.score_estimate || {};
-            new_state.show_undo_requested = (engine.undo_requested === engine.getMoveNumber()) || (goban.submit_move != null && engine.undo_requested === engine.getMoveNumber() - 1) || null;
+            new_state.show_undo_requested = (engine.undo_requested === engine.last_official_move.move_number);
             new_state.show_accept_undo = (goban.engine.playerToMove() === data.get("user").id || (goban.submit_move != null && goban.engine.playerNotToMove() === data.get("user").id) || null);
             new_state.show_title = (!goban.submit_move || goban.engine.playerToMove() !== data.get("user").id || null);
-            new_state.show_submit = !!goban.submit_move;
+            new_state.show_submit = !!goban.submit_move && (goban.engine.cur_move && goban.engine.cur_move.parent && goban.engine.last_official_move && goban.engine.cur_move.parent.id === goban.engine.last_official_move.id);
             new_state.player_to_move = goban.engine.playerToMove();
             new_state.player_not_to_move = goban.engine.playerNotToMove();
             new_state.is_my_move = new_state.player_to_move === data.get("user").id;
@@ -1151,13 +1716,11 @@ export class Game extends OGSComponent<GameProperties, any> {
             new_state.official_move_number = engine.last_official_move ? engine.last_official_move.move_number : -1;
             new_state.strict_seki_mode = engine.strict_seki_mode;
             new_state.rules = engine.rules;
-            new_state.paused = goban.engine.pause_control && !!goban.engine.pause_control.paused;
+            new_state.paused = goban.pause_control && !!goban.pause_control.paused;
             new_state.analyze_tool = goban.analyze_tool;
             new_state.analyze_subtool = goban.analyze_subtool;
-            new_state.white_pause_text = goban.white_pause_text;
-            new_state.black_pause_text = goban.black_pause_text;
 
-            if ((goban.engine.getMoveNumber() < Math.max(goban.engine.width, goban.engine.height)) && (!("tournament_id" in goban.engine.config))) {
+            if (goban.engine.gameCanBeCanceled()) {
                 new_state.resign_text = _("Cancel game");
                 new_state.resign_mode = "cancel";
             } else {
@@ -1185,8 +1748,14 @@ export class Game extends OGSComponent<GameProperties, any> {
                 new_state.white_accepted = engine.players["white"].accepted_stones === stone_removals;
             }
 
-            if ((engine.phase === "stone removal" || engine.phase === "finished") &&
-              engine.outcome !== "Timeout" && engine.outcome !== "Resignation" && engine.outcome !== "Cancellation" && goban.mode === "play") {
+            if ((engine.phase === "stone removal" || engine.phase === "finished")
+                && engine.outcome !== "Timeout"
+                && engine.outcome !== "Disconnection"
+                && engine.outcome !== "Resignation"
+                && engine.outcome !== "Abandonment"
+                && engine.outcome !== "Cancellation"
+                && goban.mode === "play"
+            ) {
                 new_state.score = engine.computeScore(false);
                 goban.showScores(new_state.score);
             } else {
@@ -1208,6 +1777,19 @@ export class Game extends OGSComponent<GameProperties, any> {
 
             new_state.move_text = engine.cur_move && engine.cur_move.text ? engine.cur_move.text : "";
 
+            if (this.state.phase && engine.phase && this.state.phase !== engine.phase && engine.phase === "finished") {
+                if (this.return_url && !this.return_url_debounce) {
+                    this.return_url_debounce = true;
+                    console.log("Transition from ", this.state.phase, " to ", engine.phase);
+                    setTimeout(() => {
+                        if (confirm(interpolate(_("Would you like to return to {{url}}?"), {"url": this.return_url}))) {
+                            window.location.href = this.return_url;
+                        }
+                    }, 1500);
+                }
+            }
+
+
             /* review stuff */
             new_state.review_owner_id = goban.review_owner_id;
             new_state.review_controller_id = goban.review_controller_id;
@@ -1215,8 +1797,9 @@ export class Game extends OGSComponent<GameProperties, any> {
         }
 
         this.setState(new_state);
-    }}}
-    createConditionalMoveTreeDisplay(root, cpath, blacks_move) {{{
+    }
+
+    createConditionalMoveTreeDisplay(root, cpath, blacks_move) {
         let goban = this.goban;
 
         let mkcb = (path) => {
@@ -1300,35 +1883,34 @@ export class Game extends OGSComponent<GameProperties, any> {
             ul.append(li);
         }
         return ret;
-    }}}
+    }
 
-    leaveScoreEstimation() {{{
+    leaveScoreEstimation() {
         this.setState({
             estimating_score: false
         });
         this.goban.setScoringMode(false);
-        this.goban.engine.clearRemoved();
         this.goban.hideScores();
         this.goban.score_estimate = null;
         this.sync_state();
-    }}}
-    enterConditionalMovePlanner() {{{
+    }
+    enterConditionalMovePlanner() {
             //if (!auth) { return; }
-        if (this.goban.engine.disable_analysis && this.goban.engine.phase !== "finished") {
+        if (this.goban.isAnalysisDisabled() && this.goban.engine.phase !== "finished") {
             //swal(_("Conditional moves have been disabled for this game."));
         } else {
             this.stashed_conditional_moves = this.goban.conditional_tree.duplicate();
             this.goban.setMode("conditional");
         }
-    }}}
-    pauseGame() {{{
+    }
+    pauseGame() {
         this.goban.pauseGame();
-    }}}
-    startReview() {{{
+    }
+    startReview() {
         let user = data.get("user");
         let is_player = user.id === this.goban.engine.players.black.id || user.id === this.goban.engine.players.white.id;
 
-        if (this.goban.engine.disable_analysis && this.goban.engine.phase !== "finished" && is_player) {
+        if (this.goban.isAnalysisDisabled() && this.goban.engine.phase !== "finished" && is_player) {
             //swal(_("Analysis mode has been disabled for this game, you can start a review after the game has concluded."));
 
         } else {
@@ -1336,62 +1918,90 @@ export class Game extends OGSComponent<GameProperties, any> {
                 "text": _("Start a review of this game?"),
                 showCancelButton: true
             }).then(() => {
-                post(`games/${this.game_id}/reviews`, {})
+                post("games/%%/reviews", this.game_id, {})
                 .then((res) => browserHistory.push(`/review/${res.id}`))
                 .catch(errorAlerter);
             })
             .catch(ignore);
         }
-    }}}
-    estimateScore() {{{
+    }
+    estimateScore():boolean {
+        let user = data.get("user");
+        let is_player = user.id === this.goban.engine.players.black.id || user.id === this.goban.engine.players.white.id;
+
+        if (this.goban.isAnalysisDisabled() && this.goban.engine.phase !== "finished" && is_player) {
+            return null;
+        }
+
         if (this.goban.engine.phase === "stone removal") {
             console.log("Cowardly refusing to enter score estimation phase while stone removal phase is active");
-            return;
+            return false;
         }
         this.setState({estimating_score: true});
-        //$scope.estimating_score = true;
-        //if (!$scope.$$phase) $scope.$digest();
-        //setTimeout(function() {
         this.goban.setScoringMode(true);
         this.sync_state();
-        /*
-            setTimeout(function() {
-                sync();
-            }, 1);
-        }, 1);
-        */
-    }}}
-    stopEstimatingScore() {{{
+        return true;
+    }
+    stopEstimatingScore():MoveTree {
+        if (!this.state.estimating_score) {
+            return null;
+        }
         this.setState({estimating_score: false});
-        this.goban.setScoringMode(false);
-        this.goban.engine.clearRemoved();
+        let ret = this.goban.setScoringMode(false);
         this.goban.hideScores();
         this.goban.score_estimate = null;
         //goban.engine.cur_move.clearMarks();
         this.sync_state();
-    }}}
-    alertModerator() {{{
+        return ret;
+    }
+    alertModerator() {
         alertModerator(this.game_id ? {game: this.game_id} : {review: this.review_id});
-    }}}
-    decide(winner): void {{{
+    }
+    decide(winner): void {
         let moderation_note = null;
         do {
-            moderation_note = prompt("Moderator note:");
+            moderation_note = prompt("Deciding for " + winner.toUpperCase() + " - Moderator note:");
             if (moderation_note == null) {
                 return;
             }
             moderation_note = moderation_note.trim();
         } while (moderation_note === "");
 
-        post(`games/${this.game_id}/moderate`,
+        post("games/%%/moderate", this.game_id,
              {
                  "decide": winner,
                  "moderation_note": moderation_note,
              }
         ).catch(errorAlerter);
-    }}}
+    }
+    private annul(tf:boolean):void {
+        let moderation_note = null;
+        do {
+            moderation_note = tf ? prompt(_("ANNULMENT - Moderator note:")) : prompt(_("Un-annulment - Moderator note:"));
+            if (moderation_note == null) {
+                return;
+            }
+            moderation_note = moderation_note.trim().replace(/(black)\b/g, `player ${this.goban.engine.players.black.id}`).replace(/(white)\b/g, `player ${this.goban.engine.players.white.id}`);
+        } while (moderation_note === "");
 
-    cancelOrResign() {{{
+        post("games/%%/annul", this.game_id,
+             {
+                 "annul": tf ? 1 : 0,
+                 "moderation_note": moderation_note,
+             }
+        )
+        .then(() => {
+            if (tf) {
+                swal({text: _("Game has been annulled")});
+            } else {
+                swal({text: _("Game ranking has been restored")});
+            }
+            this.setState({annulled: tf});
+        })
+        .catch(errorAlerter);
+    }
+
+    cancelOrResign() {
         if (this.state.resign_mode === "cancel") {
             swal({
                 text: _("Are you sure you wish to cancel this game?"),
@@ -1413,52 +2023,52 @@ export class Game extends OGSComponent<GameProperties, any> {
             .then(() => this.goban.resign())
             .catch(() => 0);
         }
-    }}}
-    goban_acceptUndo() {{{
+    }
+    goban_acceptUndo() {
         this.goban.acceptUndo();
-    }}}
-    goban_submit_move() {{{
+    }
+    goban_submit_move() {
         this.goban.submit_move();
-    }}}
-    goban_setMode_play() {{{
+    }
+    goban_setMode_play() {
         this.goban.setMode("play");
         if (this.stashed_conditional_moves) {
             this.goban.setConditionalTree(this.stashed_conditional_moves);
             this.stashed_conditional_moves = null;
         }
-    }}}
-    goban_resumeGame() {{{
+    }
+    goban_resumeGame() {
         this.goban.resumeGame();
-    }}}
-    goban_jumpToLastOfficialMove() {{{
+    }
+    goban_jumpToLastOfficialMove() {
         this.goban.jumpToLastOfficialMove();
-    }}}
-    acceptConditionalMoves() {{{
+    }
+    acceptConditionalMoves() {
         this.stashed_conditional_moves = null;
         this.goban.saveConditionalMoves();
         this.goban.setMode("play");
-    }}}
-    pass() {{{
-        if (!isLiveGame(this.goban.engine.time_control)) {
+    }
+    pass() {
+        if (!isLiveGame(this.goban.engine.time_control) || !preferences.get('one-click-submit-live')) {
             swal({text: _("Are you sure you want to pass?"), showCancelButton: true})
             .then(() => this.goban.pass())
             .catch(() => 0);
         } else {
             this.goban.pass();
         }
-    }}}
-    analysis_pass = () => {{{
+    }
+    analysis_pass = () => {
         this.goban.pass();
-    }}}
-    undo() {{{
+    }
+    undo() {
         if (data.get("user").id === this.goban.engine.playerNotToMove() && this.goban.engine.undo_requested !== this.goban.engine.getMoveNumber()) {
             this.goban.requestUndo();
         }
-    }}}
-    goban_setModeDeferredPlay() {{{
+    }
+    goban_setModeDeferredPlay() {
         this.goban.setModeDeferred("play");
-    }}}
-    goban_deleteBranch() {{{
+    }
+    goban_deleteBranch = () => {
         if (this.state.mode !== "analyze") {
             return;
         }
@@ -1472,17 +2082,91 @@ export class Game extends OGSComponent<GameProperties, any> {
         }
 
         if (this.goban.engine.cur_move.trunk) {
-            swal({text: _(`The current position is not an explored branch, so there is nothing to delete`)});
+            swal({text: _("The current position is not an explored branch, so there is nothing to delete")});
         } else {
             swal({text: _("Are you sure you wish to remove this move branch?"), showCancelButton: true})
-            .then(() => this.goban.deleteBranch())
+            .then(() => {
+                this.goban.deleteBranch();
+                this.goban.syncReviewMove();
+            })
             .catch(() => 0);
         }
-    }}}
-    setStrictSekiMode(ev) {{{
+    }
+    goban_copyBranch = () => {
+        if (this.state.mode !== "analyze") {
+            return;
+        }
+
+        try {
+            /* Don't try to copy branches when the user is selecting stuff somewhere on the page */
+            if (!window.getSelection().isCollapsed) {
+                return;
+            }
+        } catch (e) {
+        }
+
+        this.copied_node = this.goban.engine.cur_move;
+        toast(<div>{_("Branch copied")}</div>, 1000);
+    }
+    goban_pasteBranch = () => {
+        if (this.state.mode !== "analyze") {
+            return;
+        }
+
+        try {
+            /* Don't try to paste branches when the user is selecting stuff somewhere on the page */
+            if (!window.getSelection().isCollapsed) {
+                return;
+            }
+        } catch (e) {
+        }
+
+        if (this.copied_node) {
+            let paste = (base:MoveTree, source:MoveTree) => {
+                this.goban.engine.jumpTo(base);
+                if (source.edited) {
+                    this.goban.engine.editPlace(
+                        source.x,
+                        source.y,
+                        source.player,
+                        false
+                    );
+                }
+                else {
+                    this.goban.engine.place(
+                        source.x,
+                        source.y,
+                        false,
+                        false,
+                        true,
+                        false,
+                        false
+                    );
+                }
+                let cur = this.goban.engine.cur_move;
+
+                if (source.trunk_next) {
+                    paste(cur, source.trunk_next);
+                }
+                for (let branch of source.branches) {
+                    paste(cur, branch);
+                }
+            };
+
+            try {
+                paste(this.goban.engine.cur_move, this.copied_node);
+            } catch (e) {
+                errorAlerter(_("A move conflict has been detected"));
+            }
+            this.goban.syncReviewMove();
+        } else {
+            console.log("Nothing copied or cut to paste");
+        }
+    }
+    setStrictSekiMode(ev) {
         this.goban.setStrictSekiMode((ev.target as HTMLInputElement).checked);
-    }}}
-    rematch() {{{
+    }
+    rematch() {
         try {
             $(document.activeElement).blur();
         } catch (e) {
@@ -1494,130 +2178,127 @@ export class Game extends OGSComponent<GameProperties, any> {
             data.get("user").id === this.goban.engine.players.black.id ?  this.goban.engine.players.white : this.goban.engine.players.black,
             this.goban.engine.config,
         );
-    }}}
-    onStoneRemovalCancel() {{{
+    }
+    onStoneRemovalCancel() {
         swal({"text": _("Are you sure you want to resume the game?"), showCancelButton: true})
         .then(() => this.goban.rejectRemovedStones())
         .catch(() => 0);
         return false;
-    }}}
-    onStoneRemovalAccept() {{{
+    }
+    onStoneRemovalAccept() {
         this.goban.acceptRemovedStones();
         return false;
-    }}}
-    onStoneRemovalAutoScore() {{{
+    }
+    onStoneRemovalAutoScore() {
         this.goban.autoScore();
         return false;
-    }}}
-    clearAnalysisDrawing() {{{
-        swal({"text": _("Clear all pen marks?"), showCancelButton: true})
-        .then(() => {
-            this.goban.syncReviewMove({"clearpen": true});
-            this.goban.clearAnalysisDrawing();
-        })
-        .catch(() => 0);
-    }}}
-    handleMoveTreeResize(_w, _h) {{{
-        console.log("TODO: handleMoveTreeResize");
-    }}}
-    setChatLog = (chat_log) => {{{
+    }
+    clearAnalysisDrawing() {
+        this.goban.syncReviewMove({"clearpen": true});
+        this.goban.clearAnalysisDrawing();
+    }
+    setChatLog = (chat_log) => {
         this.setState({chat_log: chat_log});
-    }}}
+    }
 
-    toggleVolume = () => {{{
+    toggleVolume = () => {
         this._setVolume(this.state.volume > 0 ? 0 : 0.5);
-    }}}
-    setVolume = (ev) => {{{
-        this._setVolume(parseFloat(ev.target.value));
-    }}}
-    _setVolume(volume) {{{
+    }
+    setVolume = (ev) => {
+        const new_volume = parseFloat(ev.target.value);
+        this._setVolume(new_volume);
+    }
+    _setVolume(volume) {
         let enabled = volume > 0;
 
-        sfx.volume_override = volume;
+        sfx.setVolumeOverride(volume);
 
         this.setState({
             volume: volume,
             sound_enabled: enabled,
         });
-    }}}
-    saveVolume = () => {{{
-        let enabled = this.state.volume > 0;
-        preferences.set("sound-volume", this.state.volume);
-        preferences.set("sound-enabled", enabled);
-    }}}
+        let idx = Math.round(Math.random() * 10000) % 5; /* 5 === number of stone sounds */
 
+        if (this.volume_sound_debounce) {
+            clearTimeout(this.volume_sound_debounce);
+        }
+
+        this.volume_sound_debounce = setTimeout(() => sfx.playStonePlacementSound(5, 5, 9, 9, 'white'), 250);
+
+        preferences.set("sound-volume", volume);
+        preferences.set("sound-enabled", enabled);
+    }
 
     /* Review stuff */
-    syncToCurrentReviewMove = () => {{{
+    delete_ai_reviews = () => {
+        swal({
+            "text": _("Really clear ALL AI reviews for this game?"),
+            showCancelButton: true
+        }).then(() => {
+            console.info(`Clearing AI reviews for ${this.game_id}`);
+            del(`games/${this.game_id}/ai_reviews`, {})
+            .then((res) => console.info("AI Reviews cleared"))
+            .catch(errorAlerter);
+        })
+        .catch(ignore);
+    }
+    force_ai_review(analysis_type:"fast" | "full") {
+        post(`games/${this.game_id}/ai_reviews`, {
+            "engine": "katago",
+            "type": analysis_type,
+        })
+        .then((res) => swal(_("Analysis started")))
+        .catch(errorAlerter);
+    }
+
+    syncToCurrentReviewMove = () => {
         if (this.goban.engine.cur_review_move) {
             this.goban.engine.jumpTo(this.goban.engine.cur_review_move);
             this.sync_state();
         } else {
             setTimeout(this.syncToCurrentReviewMove, 50);
         }
-    }}}
-    hasVoice(user_id) {{{
+    }
+    hasVoice(user_id) {
         if (this.review_id && this.goban) {
             if (this.goban.review_controller_id === user_id || this.goban.review_owner_id === user_id) {
                 return true;
             }
         }
         return false;
-    }}}
+    }
 
-
-    render() {{{
-        /*
-        if (!this.ad) {
-            this.ad = $(`<div class='ad ${this.getAdClass()}'>${Math.random()}</div>`)[0];
-        }
-        */
-        //const CHAT = <div className='chat'>chat</div>;
-        const CHAT = <GameChat ref="chat" chatlog={this.chat_log} onChatLogChanged={this.setChatLog}
+    render() {
+        const CHAT = <GameChat ref={el => this.ref_chat = el} chatlog={this.chat_log} onChatLogChanged={this.setChatLog}
                          gameview={this} userIsPlayer={this.state.user_is_player}
                          channel={this.game_id ? `game-${this.game_id}` : `review-${this.review_id}`} />;
-        //const FLEX_AD = this.state.show_ads ? <div className='ad-container'><PersistentElement elt={this.ad}/></div> : <div className='supporter'/> ;
-        const FLEX_AD = null;
-        //const CURSE_ATF_AD = <AdUnit unit='cdm-zone-01' nag/>;
-        //const CURSE_BTF_AD = <AdUnit unit='cdm-zone-04' nag/>;
         const review = !!this.review_id;
 
         return (
-            <div className={"Game MainGobanView " + this.state.view_mode + " " + (this.state.squashed ? "squashed" : "")}>
+            <div>
+             <div className={"Game MainGobanView " + (this.state.zen_mode ? "zen " : "") + this.state.view_mode + " " + (this.state.squashed ? "squashed" : "")}>
                 {this.frag_kb_shortcuts()}
                 <i onClick={this.toggleZenMode} className="leave-zen-mode-button ogs-zen-mode"></i>
 
-                <div className={"left-col " + this.getAdClass()}>
-                    {(this.state.view_mode === "wide" || null) && FLEX_AD}
+                <div className="align-row-start"></div>
+                <div className="left-col">
                 </div>
 
-
                 <div className="center-col">
-                    {(this.state.view_mode === "portrait" || null) && FLEX_AD}
-
                     {(this.state.view_mode === "portrait" || null) && this.frag_players()}
 
                     {((this.state.view_mode !== "portrait" || this.state.portrait_tab === "game") || null) &&
-                        <div ref="goban_container" className="goban-container">
+                        <div ref={el => this.ref_goban_container = el} className="goban-container">
+                            <ReactResizeDetector handleWidth handleHeight onResize={() => this.onResize()} />
                             <PersistentElement className="Goban" elt={this.goban_div}/>
                         </div>
                     }
 
-                    {
-                        /*
-                        ((this.state.view_mode === 'portrait' && this.state.portrait_tab === 'chat') || null) &&
-                        this.frag_players()
-                        */
-                    }
-
-                    {(this.state.view_mode === "zen" || null) && this.frag_play_controls(true)}
-
                     {this.frag_below_board_controls()}
-
-                    {/* ((this.state.view_mode === 'wide' && win.width() > 1024) || null) && CURSE_ATF_AD */}
 
                     {((this.state.view_mode === "square" && !this.state.squashed) || null) && CHAT}
 
+                    {(this.state.view_mode === "portrait" && !this.state.zen_mode || null) && this.frag_ai_review()}
 
                     {((this.state.view_mode === "portrait") || null) &&
                         (review
@@ -1626,20 +2307,17 @@ export class Game extends OGSComponent<GameProperties, any> {
                         )
                     }
 
-                    {/* ((this.state.view_mode === 'portrait') || null) && CURSE_BTF_AD */}
-
-
-                    {((this.state.view_mode === "portrait" /* && this.state.portrait_tab === 'chat' */) || null) &&
+                    {((this.state.view_mode === "portrait" && !this.state.zen_mode /* && this.state.portrait_tab === 'chat' */) || null) &&
                         CHAT
                     }
 
-                    {(((this.state.view_mode === "portrait" /* && this.state.portrait_tab === 'chat' */)
+                    {(((this.state.view_mode === "portrait" && !this.state.zen_mode /* && this.state.portrait_tab === 'chat' */)
                       && this.state.user_is_player && this.state.phase !== "finished" ) || null) &&
                         this.frag_cancel_button()
                     }
 
 
-                    {((this.state.view_mode === "portrait" && this.state.portrait_tab === "game") || null) &&
+                    {((this.state.view_mode === "portrait" && !this.state.zen_mode && this.state.portrait_tab === "game") || null) &&
                         this.frag_dock()
                     }
 
@@ -1648,8 +2326,19 @@ export class Game extends OGSComponent<GameProperties, any> {
 
                 {(this.state.view_mode !== "portrait" || null) &&
                     <div className="right-col">
-                        {(this.state.view_mode === "square" || null) && this.frag_players()}
-                        {(this.state.view_mode === "wide" || null) && this.frag_players()}
+                        {(this.state.zen_mode || null) &&
+                            <div className="align-col-start"></div>
+                        }
+                        {(this.state.view_mode === "square" ||
+                            this.state.view_mode === "wide" || null) && this.frag_players()}
+
+                        {(this.state.view_mode === "square" ||
+                            this.state.view_mode === "wide" || null) &&
+                            !this.state.zen_mode && this.frag_ai_review()}
+
+                        {(this.state.view_mode === "square" ||
+                            this.state.view_mode === "wide" || null) &&
+                            this.state.show_game_timing && this.frag_timings()}
 
                         {review
                             ? this.frag_review_controls()
@@ -1659,20 +2348,31 @@ export class Game extends OGSComponent<GameProperties, any> {
                         {/*
                         <div className='filler'/>
                         */}
-                        {(this.state.view_mode === "square" || null) && FLEX_AD}
                         {(this.state.view_mode === "wide" || null) && CHAT}
+                        {((this.state.view_mode === "square" && this.state.squashed) || null) && CHAT}
                         {((this.state.view_mode === "square" && this.state.squashed) || null) && CHAT}
 
                         {this.frag_dock()}
+                        {(this.state.zen_mode || null) &&
+                            <div className="align-col-end"></div>
+                        }
                     </div>
                 }
+
+                <div className="align-row-end"></div>
+
+             </div>
             </div>
         );
-    }}}
-    frag_cancel_button() {{{
-        return <button className="xs bold cancel-button" onClick={this.cancelOrResign}>{this.state.resign_text}</button>;
-    }}}
-    frag_play_buttons(show_cancel_button) {{{
+    }
+    frag_cancel_button() {
+        if (this.state.view_mode === "portrait") {
+            return <button className="bold cancel-button reject" onClick={this.cancelOrResign}>{this.state.resign_text}</button>;
+        } else {
+            return <button className="xs bold cancel-button" onClick={this.cancelOrResign}>{this.state.resign_text}</button>;
+        }
+    }
+    frag_play_buttons(show_cancel_button) {
         let state = this.state;
 
         return (
@@ -1691,7 +2391,7 @@ export class Game extends OGSComponent<GameProperties, any> {
                     }
                 </span>
                 <span>
-                    {((!state.show_submit && state.is_my_move) || null) &&
+                    {((!state.show_submit && state.is_my_move && this.goban.engine.handicapMovesLeft() === 0) || null) &&
                         <button className="sm primary bold pass-button" onClick={this.pass}>{_("Pass")}</button>
                     }
                     {((state.show_submit && this.goban.engine.undo_requested !== this.goban.engine.getMoveNumber()) || null) &&
@@ -1705,16 +2405,16 @@ export class Game extends OGSComponent<GameProperties, any> {
                 </span>
             </span>
         );
-    }}}
+    }
 
-    variationKeyPress = (ev) => {{{
+    variationKeyPress = (ev) => {
         if (ev.keyCode === 13) {
             this.shareAnalysis();
             return false;
         }
-    }}}
+    }
 
-    frag_play_controls(show_cancel_button) {{{
+    frag_play_controls(show_cancel_button) {
         let state = this.state;
         let user = data.get("user");
 
@@ -1724,33 +2424,14 @@ export class Game extends OGSComponent<GameProperties, any> {
 
         return (
             <div className="play-controls">
-                <div className="game-action-buttons">{/* {{{ */}
+                <div ref={el => this.ref_game_action_buttons = el} className="game-action-buttons">{/* { */}
                     {(state.mode === "play" && state.phase === "play" && state.cur_move_number >= state.official_move_number || null) &&
                         this.frag_play_buttons(show_cancel_button)
                     }
-                    {(state.mode === "play" && state.phase === "play" && this.goban.engine.disable_analysis && state.cur_move_number < state.official_move_number || null) &&
-                        <span>
-                            <button className="sm primary bold" onClick={this.goban_setModeDeferredPlay}>{_("Back to Game")}</button>
-                        </span>
-                    }
-
-                    {(state.mode === "analyze" && !this.goban.engine.config.original_sgf || null) &&
-                        <span>
-                            <button className="sm primary bold" onClick={this.goban_setModeDeferredPlay}>{_("Back to Game")}</button>
-                            <button className="sm primary bold pass-button" onClick={this.analysis_pass}>{_("Pass")}</button>
-                        </span>
-                    }
-
-                    {(state.mode === "score estimation" || null) &&
-                        <span>
-                            <button className="sm primary bold" onClick={this.stopEstimatingScore}>{_("Back to Game")}</button>
-                        </span>
-                    }
-
                     {/* (this.state.view_mode === 'portrait' || null) && <i onClick={this.togglePortraitTab} className={'tab-icon fa fa-commenting'}/> */}
                 </div>
-                {/* }}} */}
-               <div className="game-state">{/*{{{*/}
+                {/* } */}
+               <div ref={el => this.ref_game_state_label = el} className="game-state">{/*{*/}
                     {(state.mode === "play" && state.phase === "play" || null) &&
                         <span>
                             {state.show_undo_requested
@@ -1774,7 +2455,16 @@ export class Game extends OGSComponent<GameProperties, any> {
 
                     {(state.mode === "analyze" || null) &&
                         <span>
-                            {_("Analyze Mode")}
+                            {state.show_undo_requested
+                                ?
+                                <span>
+                                    {_("Undo Requested")}
+                                </span>
+                                :
+                                <span>
+                                    {_("Analyze Mode")}
+                                </span>
+                            }
                         </span>
                     }
 
@@ -1785,53 +2475,62 @@ export class Game extends OGSComponent<GameProperties, any> {
                         </span>
                     }
 
-                    {(state.mode === "score estimation" || null) &&
-                        <span>
-                            {(state.score_estimate.winner || null) &&
-                                <span>
-                                    {interpolate(_("{{winner}} by {{score}}"), {"winner": this.goban.score_estimate.winner, "score": this.goban.score_estimate.amount})}
-                                </span>
-                            }
-                            {(!state.score_estimate.winner || null) &&
-                                <span>
-                                    {_("Estimating...")}
-                                </span>
-                            }
-                        </span>
-                    }
+                    {(state.mode === "score estimation" || null) && this.frag_estimate_score()}
 
                     {(state.mode === "play" && state.phase === "finished" || null) &&
-                        <span>
+                        <span style={{textDecoration: state.annulled ? 'line-through' : 'none' }}>
                             {state.winner
                                 ?
-                                (interpolate(pgettext("Game winner", "%s wins by %s"), [
-                                    (state.winner === this.goban.engine.black_player_id || state.winner === "black" ? _("Black") : _("White")),
-                                    pgettext("Game outcome", this.goban.engine.outcome)
-                                ]))
+                                (interpolate(pgettext("Game winner", "{{color}} wins by {{outcome}}"), {
+                                    "color": (state.winner === this.goban.engine.players.black.id || state.winner === "black" ? _("Black") : _("White")),
+                                    "outcome": getOutcomeTranslation(this.goban.engine.outcome)
+                                }))
                                 :
-                                (interpolate(pgettext("Game winner", "Tie by %s"), [ pgettext("Game outcome", this.goban.engine.outcome)]))
+                                (interpolate(pgettext("Game winner", "Tie by {{outcome}}"), {"outcome": pgettext("Game outcome", this.goban.engine.outcome)}))
                             }
                         </span>
                     }
                 </div>
-                {/*}}}*/}
-                {((state.phase === "play" && state.mode === "play" && this.state.paused && this.goban.engine.pause_control && this.goban.engine.pause_control.paused) || null) &&  /* {{{ */
+                <div className='annulled-indicator'>
+                    { state.annulled &&
+                        pgettext("Displayed to the user when the game is annulled", "Game Annulled")
+                    }
+                </div>
+                {/* } */}
+                {( state.phase === "play"
+                    && state.mode === "play"
+                    && this.state.paused
+                    && this.goban.pause_control
+                    && this.goban.pause_control.paused
+                    || null) &&  /* { */
                     <div className="pause-controls">
                         <h3>{_("Game Paused")}</h3>
-                        {(this.state.user_is_player || null) &&
+                        {(this.state.user_is_player || user.is_moderator || null) &&
                             <button className="info" onClick={this.goban_resumeGame}>
                                {_("Resume")}
                             </button>
                         }
                         <div>{
-                            this.goban.engine.black_player_id === this.goban.engine.pause_control.paused.pausing_player_id
-                                ? interpolate(_("{{pauses_left}} pauses left for Black"), {pauses_left: this.goban.engine.pause_control.paused.pauses_left})
-                                : interpolate(_("{{pauses_left}} pauses left for White"), {pauses_left: this.goban.engine.pause_control.paused.pauses_left})
+                            this.goban.engine.players.black.id === this.goban.pause_control.paused.pausing_player_id
+                                ? interpolate(_("{{pauses_left}} pauses left for Black"), {pauses_left: this.goban.pause_control.paused.pauses_left})
+                                : interpolate(_("{{pauses_left}} pauses left for White"), {pauses_left: this.goban.pause_control.paused.pauses_left})
                         }</div>
                     </div>
-                }{/* }}} */}
-                {(this.state.phase === "finished" || null) &&  /* {{{ */
-                    <div>
+                }
+
+                {(( this.goban.pause_control
+                    && this.goban.pause_control.moderator_paused
+                    && user.is_moderator
+                    ) || null) &&  /* { */
+                    <div className="pause-controls">
+                        <h3>{_("Paused by Moderator")}</h3>
+                        <button className="info" onClick={this.goban_resumeGame}>
+                           {_("Resume")}
+                        </button>
+                    </div>
+                }
+                {(this.state.phase === "finished" || null) &&  /* { */
+                    <div className="analyze-mode-buttons">     {/* not really analyze mode, but equivalent button position and look*/}
                         {(this.state.user_is_player && this.state.mode !== "score estimation" || null) &&
                             <button
                                 onClick={this.rematch}
@@ -1850,16 +2549,25 @@ export class Game extends OGSComponent<GameProperties, any> {
                                 ))}
                             </div>
                         }
+
+                        {(this.return_url || null) &&
+                            <div className="return-url">
+                                <a href={this.return_url} rel="noopener">
+                                    {interpolate(pgettext("Link to where the user came from", "Return to {{url}}"), {"url": this.return_url})}
+                                </a>
+                            </div>
+                        }
+
                     </div>
-                }{/* }}} */}
-                {(this.state.phase === "stone removal" || null) &&  /* {{{ */
+                }{/* } */}
+                {(this.state.phase === "stone removal" || null) &&  /* { */
                     <div className="stone-removal-controls">
 
                        <div>
-                           {(this.state.user_is_player || null) &&
-                               <button id="game-stone-removal-accept" className="primary" onClick={this.onStoneRemovalAccept}>
+                           {(this.state.user_is_player || user.is_moderator || null) &&
+                               <button id="game-stone-removal-accept" className="primary" onClick={this.state.user_is_player ? this.onStoneRemovalAccept :  null}>
                                    {_("Accept removed stones")}
-                                   <span style={{whiteSpace: "nowrap"}}>(<span id="stone-removal-clock"></span>)</span>
+                                   <Clock goban={this.goban} color='stone-removal' />
                                </button>
                            }
                        </div>
@@ -1928,8 +2636,9 @@ export class Game extends OGSComponent<GameProperties, any> {
                        }
 
                     </div>
-                }{/* }}} */}
-                {(this.state.mode === "conditional" || null) &&  /* {{{ */
+                }
+                {/* } */}
+                {(this.state.mode === "conditional" || null) &&  /* { */
                     <div className="conditional-move-planner">
                       <div className="buttons">
                           <button className="primary" onClick={this.acceptConditionalMoves}>{_("Accept Conditional moves")}</button>
@@ -1941,45 +2650,48 @@ export class Game extends OGSComponent<GameProperties, any> {
                           <PersistentElement elt={this.conditional_move_tree} />
                       </div>
                     </div>
-                }{/* }}} */}
-                {(this.state.mode === "analyze" || null) &&  /* {{{ */
+                }{/* } */}
+                {((this.state.mode === "analyze") || null) &&  /* { */
                     <div>
                         {this.frag_analyze_button_bar()}
 
-                        <Resizable id="move-tree-container" className="vertically-resizable" onResize={this.handleMoveTreeResize}>
-                            <canvas id="move-tree-canvas"></canvas>
-                        </Resizable>
+                        <Resizable id="move-tree-container" className="vertically-resizable" ref={this.setMoveTreeContainer} />
 
-
-
-                        <div style={{padding: "0.5em"}}>
-                        <div className="input-group">
-                            <input type="text" className={`form-control ${this.state.chat_log}`} placeholder={_("Variation name...")}
-                                value={this.state.variation_name}
-                                onChange={this.updateVariationName}
-                                onKeyDown={this.variationKeyPress}
-                                disabled={user.anonymous}
-                                />
-                                {(this.state.chat_log !== "malkovich" || null) && <button className="sm" type="button" disabled={user.anonymous} onClick={this.shareAnalysis}>{_("Share")}</button>}
-                                {(this.state.chat_log === "malkovich" || null) && <button className="sm malkovich" type="button" disabled={user.anonymous} onClick={this.shareAnalysis}>{_("Record")}</button>}
-                        </div>
-                        </div>
+                        {(!this.state.zen_mode || null)
+                            && <div style={{padding: "0.5em"}}>
+                                <div className="input-group">
+                                    <input type="text" className={`form-control ${this.state.chat_log}`} placeholder={_("Variation name...")}
+                                        value={this.state.variation_name}
+                                        onChange={this.updateVariationName}
+                                        onKeyDown={this.variationKeyPress}
+                                        disabled={user.anonymous}
+                                        />
+                                        {(this.state.chat_log !== "malkovich" || null) && <button className="sm" type="button" disabled={user.anonymous} onClick={this.shareAnalysis}>{_("Share")}</button>}
+                                        {(this.state.chat_log === "malkovich" || null) && <button className="sm malkovich" type="button" disabled={user.anonymous} onClick={this.shareAnalysis}>{_("Record")}</button>}
+                                </div>
+                               </div>
+                        }
                     </div>
-                }{/* }}} */}
-
-                {/*
-                    (this.goban.engine.config.original_sgf || null) &&
-                    <div style={{paddingLeft: '0.5em', paddingRight: '0.5em'}}>
-                        <textarea id='game-move-node-text' placeholder={_("Move comments...")}
-                            rows={5}
-                            className='form-control'
-                            disabled={true}></textarea>
-                    </div>
-                */}
+                }{/* } */}
+                {(state.mode === "play" && state.phase === "play" && this.goban.isAnalysisDisabled() && state.cur_move_number < state.official_move_number || null) &&
+                   <div className="analyze-mode-buttons">
+                    <span>
+                        <button className="sm primary bold"
+                                onClick={this.goban_setModeDeferredPlay}>{_("Back to Game")}</button>
+                    </span>
+                   </div>
+                }
+                {(state.mode === "score estimation" || null) &&
+                <div className="analyze-mode-buttons">
+                    <span>
+                        <button className="sm primary bold" onClick={this.stopEstimatingScore}>{_("Back to Board")}</button>
+                    </span>
+                </div>
+                }
             </div>
         );
-    }}}
-    frag_review_controls() {{{
+    }
+    frag_review_controls() {
         let user = data.get("user");
 
         if (!this.goban) {
@@ -1988,81 +2700,120 @@ export class Game extends OGSComponent<GameProperties, any> {
 
         return (
             <div className="play-controls">
-                <div className="game-state">
-                    {_("Review by")}: <Player user={this.state.review_owner_id} />
-                    {((this.state.review_controller_id && this.state.review_controller_id !== this.state.review_owner_id) || null) &&
+                <div ref={el => this.ref_game_state_label = el} className="game-state">
+                    {(this.state.mode === "analyze" || null) &&
                         <div>
-                            {_("Review controller")}: <Player user={this.state.review_controller_id} />
+                            {_("Review by")}: <Player user={this.state.review_owner_id} />
+                            {((this.state.review_controller_id && this.state.review_controller_id !== this.state.review_owner_id) || null) &&
+                                <div>
+                                    {_("Review controller")}: <Player user={this.state.review_controller_id} />
+                                </div>
+                            }
+                        </div>
+                    }
+
+                    {(this.state.mode === "score estimation" || null) &&
+                        <div>
+                            {this.frag_estimate_score()}
                         </div>
                     }
                 </div>
-                <div>
-                    {this.frag_analyze_button_bar()}
+                {(this.state.mode === "analyze" || null) &&
+                    <div>
+                        {this.frag_analyze_button_bar()}
 
-                    <div className="space-around">
-                        <button className="sm primary bold pass-button" onClick={this.analysis_pass}>{_("Pass")}</button>
-                        {(this.state.review_controller_id && this.state.review_controller_id !== user.id) &&
-                            this.state.review_out_of_sync &&
-                            <button className="sm" onClick={this.syncToCurrentReviewMove}>
-                                {pgettext("Synchronize to current review position", "Sync")} <i className='fa fa-refresh'/>
-                            </button>
-                        }
-                    </div>
-
-                    <Resizable id="move-tree-container" className="vertically-resizable" onResize={this.handleMoveTreeResize}>
-                        <canvas id="move-tree-canvas"></canvas>
-                    </Resizable>
-
-                    <div style={{paddingLeft: "0.5em", paddingRight: "0.5em"}}>
-                        <textarea id="game-move-node-text" placeholder={_("Move comments...")}
-                            rows={5}
-                            className="form-control"
-                            value={this.state.move_text}
-                            disabled={this.state.review_controller_id !== data.get("user").id}
-                            onChange={this.updateMoveText}
-                            ></textarea>
-                    </div>
-
-                    <div style={{padding: "0.5em"}}>
-                        <div className="input-group">
-                            <input type="text" className={`form-control ${this.state.chat_log}`} placeholder={_("Variation name...")}
-                                value={this.state.variation_name}
-                                onChange={this.updateVariationName}
-                                onKeyDown={this.variationKeyPress}
-                                disabled={user.anonymous}
-                                />
-                            <button className="sm" type="button" disabled={user.anonymous} onClick={this.shareAnalysis}>{_("Share")}</button>
+                        <div className="space-around">
+                            {(this.state.review_controller_id && this.state.review_controller_id !== user.id) &&
+                                this.state.review_out_of_sync &&
+                                <button className="sm" onClick={this.syncToCurrentReviewMove}>
+                                    {pgettext("Synchronize to current review position", "Sync")} <i className='fa fa-refresh'/>
+                                </button>
+                            }
                         </div>
-                    </div>
 
-                    <div style={{padding: "0.5em", textAlign: "center"}}>
-                        {_("Voice Chat: ")} <VoiceChat channel={"review-" + this.review_id} hasVoice={ this.hasVoice(user.id) } />
+                        <Resizable id="move-tree-container" className="vertically-resizable" ref={this.setMoveTreeContainer} />
+
+                        <div style={{paddingLeft: "0.5em", paddingRight: "0.5em"}}>
+                            <textarea id="game-move-node-text" placeholder={_("Move comments...")}
+                                rows={5}
+                                className="form-control"
+                                value={this.state.move_text}
+                                disabled={this.state.review_controller_id !== data.get("user").id}
+                                onChange={this.updateMoveText}
+                                ></textarea>
+                        </div>
+
+                        <div style={{padding: "0.5em"}}>
+                            <div className="input-group">
+                                <input type="text" className={`form-control ${this.state.chat_log}`} placeholder={_("Variation name...")}
+                                    value={this.state.variation_name}
+                                    onChange={this.updateVariationName}
+                                    onKeyDown={this.variationKeyPress}
+                                    disabled={user.anonymous}
+                                    />
+                                <button className="sm" type="button" disabled={user.anonymous} onClick={this.shareAnalysis}>{_("Share")}</button>
+                            </div>
+                        </div>
+
+                        {/*
+                        <div style={{padding: "0.5em", textAlign: "center"}}>
+                            {_("Voice Chat: ")} <VoiceChat channel={"review-" + this.review_id} hasVoice={ this.hasVoice(user.id) } />
+                        </div>
+                        */}
                     </div>
-                </div>
+                }
+                {(this.state.mode === "score estimation" || null) &&
+                    <div className="analyze-mode-buttons">
+                        <span>
+                            <button className="sm primary bold" onClick={this.stopEstimatingScore}>{_("Back to Review")}</button>
+                        </span>
+                    </div>
+                }
             </div>
         );
-    }}}
-    frag_analyze_button_bar() {{{
+    }
+    frag_estimate_score() {
+        return (
+            <span>
+                {(this.state.score_estimate.winner || null) &&
+                    <span>
+                        {interpolate(_("{{winner}} by {{score}}"), {"winner": this.goban.score_estimate.winner, "score": this.goban.score_estimate.amount})}
+                    </span>
+                }
+                {(!this.state.score_estimate.winner || null) &&
+                    <span>
+                        {_("Estimating...")}
+                    </span>
+                }
+            </span>
+        );
+    }
+    frag_analyze_button_bar() {
+        let state = this.state;
+
         return (
         <div className="game-analyze-button-bar">
             {/*
-            {(this.review || null) &&
+            {(this.review_id || null) &&
                 <i id='review-sync' className='fa fa-refresh {{goban.engine.cur_move.id !== goban.engine.cur_review_move.id ? "need-sync" : ""}}'
                     onClick={this.syncToCurrentReviewMove()} title={_("Sync to where the reviewer is at")}></i>
             }
             */}
             <div className="btn-group">
                 <button onClick={this.set_analyze_tool.stone_alternate}
+                     title={_("Place alternating stones")}
                      className={"stone-button " + ((this.state.analyze_tool === "stone" && (this.state.analyze_subtool !== "black" && this.state.analyze_subtool !== "white")) ? "active" : "")}>
                      <img alt="alternate" src={data.get("config.cdn_release") + "/img/black-white.png"}/>
                 </button>
 
                 <button onClick={this.set_analyze_tool.stone_black}
+                    title={_("Place black stones")}
                      className={"stone-button " + ((this.state.analyze_tool === "stone" && this.state.analyze_subtool === "black") ? "active" : "")}>
                      <img alt="alternate" src={data.get("config.cdn_release") + "/img/black.png"}/>
                 </button>
 
                 <button onClick={this.set_analyze_tool.stone_white}
+                    title={_("Place white stones")}
                      className={"stone-button " + ((this.state.analyze_tool === "stone" && this.state.analyze_subtool === "white") ? "active" : "")}>
                      <img alt="alternate" src={data.get("config.cdn_release") + "/img/white.png"}/>
                 </button>
@@ -2070,159 +2821,210 @@ export class Game extends OGSComponent<GameProperties, any> {
 
             <div className="btn-group">
                 <button onClick={this.set_analyze_tool.draw}
+                    title={_("Draw on the board with a pen")}
                     className={(this.state.analyze_tool === "draw") ? "active" : ""}
                     >
                     <i className="fa fa-pencil"></i>
                 </button>
-                <button onClick={this.clearAnalysisDrawing}>
+                <button onClick={this.clearAnalysisDrawing} title={_("Clear pen marks")}>
                     <i className="fa fa-eraser"></i>
                 </button>
             </div>
-            <input type="color" value={this.state.analyze_pencil_color} onChange={this.setPencilColor}/>
+            <input type="color" value={this.state.analyze_pencil_color}  title={_("Select pen color")} onChange={this.setPencilColor}/>
 
-            <button onClick={this.goban_deleteBranch}>
-                <i className="fa fa-trash"></i>
-            </button>
+            <div className="btn-group">
+                <button onClick={this.goban_copyBranch} title={_("Copy this branch")}>
+                    <i className="fa fa-clone"></i>
+                </button>
+                <button disabled={this.copied_node === null} onClick={this.goban_pasteBranch} title={_("Paste branch")}>
+                    <i className="fa fa-clipboard"></i>
+                </button>
+                <button onClick={this.goban_deleteBranch} title={_("Delete branch")}>
+                    <i className="fa fa-trash"></i>
+                </button>
+            </div>
 
             <div className="btn-group">
                 <button onClick={this.set_analyze_tool.label_letters}
+                    title={_("Place alphabetical labels")}
                     className={(this.state.analyze_tool === "label" && this.state.analyze_subtool === "letters") ? "active" : ""}>
                     <i className="fa fa-font"></i>
                 </button>
                 <button onClick={this.set_analyze_tool.label_numbers}
+                    title={_("Place numeric labels")}
                     className={(this.state.analyze_tool === "label" && this.state.analyze_subtool === "numbers") ? "active" : ""}>
                     <i className="ogs-label-number"></i>
                 </button>
                 <button onClick={this.set_analyze_tool.label_triangle}
+                    title={_("Place triangle marks")}
                     className={(this.state.analyze_tool === "label" && this.state.analyze_subtool === "triangle") ? "active" : ""}>
                     <i className="ogs-label-triangle"></i>
                 </button>
                 <button onClick={this.set_analyze_tool.label_square}
+                    title={_("Place square marks")}
                     className={(this.state.analyze_tool === "label" && this.state.analyze_subtool === "square") ? "active" : ""}>
                     <i className="ogs-label-square"></i>
                 </button>
                 <button onClick={this.set_analyze_tool.label_circle}
+                    title={_("Place circle marks")}
                     className={(this.state.analyze_tool === "label" && this.state.analyze_subtool === "circle") ? "active" : ""}>
                     <i className="ogs-label-circle"></i>
                 </button>
                 <button onClick={this.set_analyze_tool.label_cross}
+                    title={_("Place X marks")}
                     className={(this.state.analyze_tool === "label" && this.state.analyze_subtool === "cross") ? "active" : ""}>
                     <i className="ogs-label-x"></i>
                 </button>
             </div>
-
+             <div className="analyze-mode-buttons">
+                 {(state.mode === "analyze" || null) &&
+                 <span>
+                     {(!this.review_id || null) &&
+                        <button className="sm primary bold" onClick={this.goban_setModeDeferredPlay}>{_("Back to Game")}</button>
+                     }
+                     <button className="sm primary bold pass-button" onClick={this.analysis_pass}>{_("Pass")}</button>
+                 </span>
+                 }
+             </div>
         </div>
         );
-    }}}
+    }
 
-    frag_clock(color) {{{
+    frag_ai_review() {
+        if (this.goban
+            && this.goban.engine
+            && this.goban.engine.phase === "finished"
+            && (
+                (this.goban.engine.width === 19 && this.goban.engine.height === 19)
+                || (this.goban.engine.width === 13 && this.goban.engine.height === 13)
+                || (this.goban.engine.width === 9 && this.goban.engine.height === 9)
+            )
+        ) {
+            return <AIReview
+                onAIReviewSelected={r => this.setState({selected_ai_review_uuid: r?.uuid})}
+                game={this} move={this.goban.engine.cur_move} hidden={!this.state.ai_review_enabled} />;
+        }
+        return null;
+    }
+
+    frag_timings = () => {
+        if (this.goban &&
+            this.goban.engine) {
+
+            return <GameTimings
+                moves={this.goban.engine.config.moves}
+                start_time={this.goban.engine.config.start_time}
+                end_time={this.goban.engine.config.end_time}
+                free_handicap_placement={this.goban.engine.config.free_handicap_placement}
+                handicap={this.goban.engine.config.handicap}/>;
+        }
+        return null;
+    }
+
+    frag_num_captures_text(color) {
+        let num_prisoners = this.state.score[color].prisoners;
+        let prisoner_color = color === "black" ? "white" : "black";
+        let prisoner_img_src = data.get("config.cdn_release") + "/img/" + prisoner_color + ".png";
         return (
-          <div id={`game-${color}-clock`} className={(color + " clock in-game-clock") + (this.state[`${color}_pause_text`] ? " paused" : "")}>
-              <div className="main-time boxed"></div>
-              {(this.goban.engine.time_control.time_control === "byoyomi" || null) &&
-                  <span> + <div className="periods boxed"/> x <div className="period-time boxed"/></span>
-              }
-              {(this.goban.engine.time_control.time_control === "canadian" || null) &&
-                  <span> + <div className="period-time boxed"/> / <div className="periods boxed"/></span>
-              }
-              {(this.state[`${color}_pause_text`] || null) &&
-                  <div className="pause-text">{this.state[`${color}_pause_text`]}</div>
-              }
-              {null && (this.goban.engine.time_control.time_control === "byoyomi" || this.goban.engine.time_control.time_control === "canadian" || null) &&
-
-                  <div className="overtime-container">
-                      <div className="overtime">{_("OVERTIME")}</div>
-                      <div className="periods-container">
-                          <div className="periods boxed">&nbsp;</div>
-                          <div className="period-time boxed">&nbsp;</div>
-                      </div>
-                  </div>
-              }
+          <div className={"captures" + (this.state.estimating_score ? " hidden" : "")}>
+            <span className="num-captures-container">
+                <span className="num-captures-count">{num_prisoners}</span>
+                {(!this.state.zen_mode || null) &&
+                    <span className="num-captures-units">
+                        {` ${ngettext("capture", "captures", num_prisoners)}`}
+                    </span>
+                }
+                {(this.state.zen_mode || null) &&
+                    <span className="num-captures-stone">
+                        {' '}<img className="stone-image" src={prisoner_img_src} />
+                    </span>
+                }
+            </span>
           </div>
         );
-    }}}
-    frag_players() {{{
+    }
+
+    frag_players() {
         let goban = this.goban;
         if (!goban) {
             return null;
         }
         let engine = goban.engine;
-        let portrait_game_mode = this.state.view_mode === "portrait" && this.state.portrait_tab === "game";
-
 
         return (
-            <div className="players">
-              {["black", "white"].map((color, idx) => {
-                  let player_bg: any = {};
-                  if (engine.players[color].id) {
-                      player_cache.fetch(engine.players[color].id, ["country"]).then((player) => {
-                          Object.assign(engine.players[color], player);
-                      }).catch(ignore);
-                  } else {
-                      Object.assign(engine.players[color], {"country": "un"});
-                  }
-                  if (engine.players[color] && this.state.player_icons[engine.players[color].id]) {
-                      player_bg.backgroundImage = `url("${this.state.player_icons[engine.players[color].id]}")`;
-                  }
+            <div ref={el => this.ref_players = el} className="players">
+                {["black", "white"].map((color: 'black' | 'white', idx) => {
+                    let player_bg: any = {};
+                    if (this.state[`historical_${color}`]) {
+                        let icon = icon_size_url(this.state[`historical_${color}`]['icon'], 64);
+                        player_bg.backgroundImage = `url("${icon}")`;
+                    }
+                    return (
+                    <div key={idx} className={`${color} player-container`}>
 
-                  return (
-                  <div key={idx} className={`${color} player-container`}>
-                      <div className="player-icon-clock-row">
-                          {(goban.engine.players[color] || null) &&
-                              <div className="player-icon-container" style={player_bg}>
-                                 <div className="player-flag"><Flag country={engine.players[color].country}/></div>
-                                 <ChatPresenceIndicator channel={this.game_id ? `game-${this.game_id}` : `review-${this.review_id}`} userId={engine.players[color].id} />
-                              </div>
-                          }
+                        <div className="player-icon-clock-row">
+                            {((engine.players[color] && engine.players[color].id) || null) &&
+                                <div className="player-icon-container" style={player_bg}>
+                                    {this.state[`${color}_auto_resign_expiration`] &&
+                                        <div className={`auto-resign-overlay`}>
+                                            <i className='fa fa-bolt' />
+                                            <CountDown to={this.state[`${color}_auto_resign_expiration`]} />
+                                        </div>
+                                    }
+                                    <div className="player-flag"><Flag country={engine.players[color].country}/></div>
+                                    <ChatPresenceIndicator channel={this.game_id ? `game-${this.game_id}` : `review-${this.review_id}`} userId={engine.players[color].id} />
+                                </div>
+                            }
 
-                          {(goban.engine.phase !== "finished" && !goban.review_id || null) &&
-                              this.frag_clock(color)
-                          }
-                      </div>
+                            {(goban.engine.phase !== "finished" && !goban.review_id || null) &&
+                                <Clock goban={this.goban} color={color} className="in-game-clock" />
+                            }
+                        </div>
 
-                      {((goban.engine.players[color] && goban.engine.players[color].rank !== -1) || null) &&
-                          <div className={`${color} player-name-container`}>
-                             <Player user={goban.engine.players[color]}/>
-                          </div>
-                      }
+                        {((goban.engine.players[color] && goban.engine.players[color].rank !== -1) || null) &&
+                            <div className={`${color} player-name-container`}>
+                                <Player user={ this.state[`historical_${color}`] || goban.engine.players[color] } disableCacheUpdate />
+                            </div>
+                        }
 
-                      {((!goban.engine.players[color]) || null) &&
-                          <span className="player-name-plain">{color === "black" ? _("Black") : _("White")}</span>
-                      }
+                        {((!goban.engine.players[color]) || null) &&
+                            <span className="player-name-plain">{color === "black" ? _("Black") : _("White")}</span>
+                        }
 
 
-                      <div className="score-container" onMouseEnter={this.score_popups[`popup_${color}`]} onMouseLeave={this.score_popups[`hide_${color}`]}>
-                          {((goban.engine.phase === "finished" || goban.engine.phase === "stone removal" || null) && goban.mode !== "analyze" &&
-                            goban.engine.outcome !== "Timeout" && goban.engine.outcome !== "Resignation" && goban.engine.outcome !== "Cancellation") &&
-                              <div className="points">
-                                  {interpolate(_("{{total}} points"), {"total": this.state.score[color].total})}
-                              </div>
-                          }
-                          {((goban.engine.phase !== "finished" && goban.engine.phase !== "stone removal" || null) || goban.mode === "analyze" ||
-                            goban.engine.outcome === "Timeout" || goban.engine.outcome === "Resignation" || goban.engine.outcome === "Cancellation") &&
-                              <div className="captures">
-                                  {interpolate(_("{{captures}} captures"), {"captures": this.state.score[color].prisoners})}
-                              </div>
-                          }
-                          {((goban.engine.phase !== "finished" && goban.engine.phase !== "stone removal" || null) || goban.mode === "analyze" ||
-                            goban.engine.outcome === "Timeout" || goban.engine.outcome === "Resignation" || goban.engine.outcome === "Cancellation") &&
-                              <div className="komi">
-                                {this.state.score[color].komi === 0 ? "" : `+ ${parseFloat(this.state.score[color].komi).toFixed(1)}`}
-                              </div>
-                          }
-                          <div id={`${color}-score-details`} className="score-details"/>
-                      </div>
-                  </div>
-              ); })}
+                        <div className={"score-container " + (this.state.show_score_breakdown ? 'show-score-breakdown' : '')}
+                            onClick={() => this.state.show_score_breakdown ? this.hideScores() : this.popupScores()}
+                            >
+                            {((goban.engine.phase === "finished" || goban.engine.phase === "stone removal" || null) && goban.mode !== "analyze" &&
+                                goban.engine.outcome !== "Timeout" && goban.engine.outcome !== "Resignation" && goban.engine.outcome !== "Cancellation") &&
+                                <div className={"points" + (this.state.estimating_score ? " hidden" : "")} >
+                                    {interpolate(_("{{total}} {{unit}}"), {"total": this.state.score[color].total, "unit": ngettext("point", "points", this.state.score[color].total)})}
+                                </div>
+                            }
+                            {((goban.engine.phase !== "finished" && goban.engine.phase !== "stone removal" || null) || goban.mode === "analyze" ||
+                                goban.engine.outcome === "Timeout" || goban.engine.outcome === "Resignation" || goban.engine.outcome === "Cancellation") &&
+                                    this.frag_num_captures_text(color)
+                            }
+                            {((goban.engine.phase !== "finished" && goban.engine.phase !== "stone removal" || null) || goban.mode === "analyze" ||
+                                goban.engine.outcome === "Timeout" || goban.engine.outcome === "Resignation" || goban.engine.outcome === "Cancellation") &&
+                                <div className="komi">
+                                    {this.state.score[color].komi === 0 ? "" : `+ ${parseFloat(this.state.score[color].komi).toFixed(1)}`}
+                                </div>
+                            }
+                            <div id={`${color}-score-details`} className="score-details"/>
+                        </div>
+                    </div>
+                ); })}
             </div>
         );
-    }}}
-    frag_below_board_controls() {{{
+    }
+
+    frag_below_board_controls() {
         let goban = this.goban;
 
         if (this.state.view_mode === "portrait" && this.state.portrait_tab === "dock") {
             return (
-                <div className="action-bar">
+                <div ref={el => this.ref_action_bar = el} className="action-bar">
                     <span className="move-number">
                         <i onClick={this.togglePortraitTab} className={"tab-icon ogs-goban"} />
                     </span>
@@ -2232,39 +3034,25 @@ export class Game extends OGSComponent<GameProperties, any> {
 
         if (this.state.view_mode === "portrait" && this.state.portrait_tab === "chat") {
             return (
-                <div className="action-bar">
+                <div ref={el => this.ref_action_bar = el} className="action-bar">
                     <span className="move-number">
-                        <i onClick={this.togglePortraitTab} className={/*'tab-icon fa fa-list-ul'*/"tab-icon ogs-goban"} />
+                        <i onClick={this.togglePortraitTab} className={"tab-icon ogs-goban"} />
                     </span>
                 </div>
             );
         }
-
         return (
-            <div className="action-bar">
-                {((this.state.view_mode !== "portrait") || null) &&
-                    <span className="icons">
-                          {(goban && goban.engine.config.tournament_id || null) &&
-                              <Link className="plain" to={`/tournament/${this.goban.engine.config.tournament_id}`}><i className="fa fa-trophy" title={_("This is a tournament game")}></i></Link>
-                          }
-                          {(goban && goban.engine.config.ladder_id || null) &&
-                              <Link className="plain" to={`/ladder/${goban.engine.config.ladder_id}`}><i className="fa fa-trophy" title={_("This is a ladder game")}></i></Link>
-                          }
-                          {(goban && goban.engine.config["private"] || null) &&
-                              <i className="fa fa-lock clickable" onClick={this.openACL}></i>
-                          }
-                    </span>
-                }
-
-                    <span className="controls">
-                        <span onClick={this.nav_first} className="move-control"><i className="fa fa-fast-backward"></i></span>
-                        <span onClick={this.nav_prev_10} className="move-control"><i className="fa fa-backward"></i></span>
-                        <span onClick={this.nav_prev} className="move-control"><i className="fa fa-step-backward"></i></span>
-                        <span onClick={this.nav_play_pause} className="move-control"><i className={"fa " + (this.state.autoplaying ? "fa-pause" : "fa-play")}></i></span>
-                        <span onClick={this.nav_next} className="move-control"><i className="fa fa-step-forward"></i></span>
-                        <span onClick={this.nav_next_10} className="move-control"><i className="fa fa-forward"></i></span>
-                        <span onClick={this.nav_last} className="move-control"><i className="fa fa-fast-forward"></i></span>
-                    </span>
+            <div ref={el => this.ref_action_bar = el} className="action-bar">
+                <span className="icons" />
+                <span className="controls">
+                    <span onClick={this.nav_first} className="move-control"><i className="fa fa-fast-backward"></i></span>
+                    <span onClick={this.nav_prev_10} className="move-control"><i className="fa fa-backward"></i></span>
+                    <span onClick={this.nav_prev} className="move-control"><i className="fa fa-step-backward"></i></span>
+                    <span onClick={this.nav_play_pause} className="move-control"><i className={"fa " + (this.state.autoplaying ? "fa-pause" : "fa-play")}></i></span>
+                    <span onClick={this.nav_next} className="move-control"><i className="fa fa-step-forward"></i></span>
+                    <span onClick={this.nav_next_10} className="move-control"><i className="fa fa-forward"></i></span>
+                    <span onClick={this.nav_last} className="move-control"><i className="fa fa-fast-forward"></i></span>
+                </span>
 
                 {((this.state.view_mode !== "portrait") || null) &&
                 <span className="move-number">
@@ -2273,70 +3061,135 @@ export class Game extends OGSComponent<GameProperties, any> {
                 }
             </div>
         );
-    }}}
-    frag_dock() {{{
+    }
+
+
+    frag_dock() {
         let goban = this.goban;
+        let supporter_ai_review_ready = (goban && (data.get("user").supporter || data.get("user").is_moderator) && goban.engine.phase === "finished" || null);
+        let superuser_ai_review_ready = (goban && data.get("user").is_superuser && goban.engine.phase === "finished" || null);
         let mod = (goban && data.get("user").is_moderator && goban.engine.phase !== "finished" || null);
+        let annul = (goban && data.get("user").is_moderator && goban.engine.phase === "finished" || null);
+        let annulable = (goban && !this.state.annulled && goban.engine.config.ranked || null);
+        let unannulable = (goban && this.state.annulled && goban.engine.config.ranked || null);
+
         let review = !!this.review_id || null;
         let game = !!this.game_id || null;
         if (review) {
+            superuser_ai_review_ready = null;
             mod = null;
+            annul = null;
         }
 
         let game_id = null;
+        let sgf_download_enabled = false;
         try {
+            sgf_download_enabled = this.goban.engine.phase === 'finished' || !this.goban.isAnalysisDisabled(true);
             game_id = this.goban.engine.config.game_id;
+
         } catch (e) {}
+
+        let sgf_url = null;
+        let sgf_with_comments_url = null;
+        let sgf_with_ai_review_url = null;
+        if (this.game_id) {
+            sgf_url = api1(`games/${this.game_id}/sgf`);
+            if (this.state.selected_ai_review_uuid) {
+                sgf_with_ai_review_url = api1(`games/${this.game_id}/sgf?ai_review=${this.state.selected_ai_review_uuid}`);
+            }
+        } else {
+            sgf_url = api1(`reviews/${this.review_id}/sgf?without-comments=1`);
+            sgf_with_comments_url = api1(`reviews/${this.review_id}/sgf`);
+        }
 
         return (
             <Dock>
+                {(this.tournament_id || null) &&
+                    <Link className="plain" to={`/tournament/${this.tournament_id}`}><i className="fa fa-trophy" title={_("This is a tournament game")}/> {_("Tournament")}</Link>
+                }
+                {(this.ladder_id || null) &&
+                    <Link className="plain" to={`/ladder/${this.ladder_id}`}><i className="fa fa-trophy" title={_("This is a ladder game")}/> {_("Ladder")}</Link>
+                }
+                {(this.goban && this.goban.engine.config["private"] || null) &&
+                    <a onClick={this.openACL}><i className="fa fa-lock"/> {pgettext("Control who can access the game or review", "Access settings")}</a>
+                }
+
                 <a>
                     <i className={"fa volume-icon " +
                         (this.state.volume === 0 ? "fa-volume-off"
                             : (this.state.volume > 0.5 ? "fa-volume-up" : "fa-volume-down"))}
                             onClick={this.toggleVolume}
-                    /> <input type="range"
+                    /> <input type="range" className='volume-slider'
                         onChange={this.setVolume}
                         value={this.state.volume} min={0} max={1.0} step={0.01}
-                    /> <i className="fa fa-save" onClick={this.saveVolume} style={{cursor: "pointer"}}/>
+                    />
                 </a>
+
                 <a onClick={this.toggleZenMode}><i className="ogs-zen-mode"></i> {_("Zen mode")}</a>
                 <a onClick={this.toggleCoordinates}><i className="ogs-coordinates"></i> {_("Toggle coordinates")}</a>
+                {game &&
+                    <a onClick={this.toggleAIReview}>
+                        <i className="fa fa-desktop"></i> {this.state.ai_review_enabled ? _("Disable AI review") : _("Enable AI review")}
+                    </a>
+                }
                 <a onClick={this.showGameInfo}><i className="fa fa-info"></i> {_("Game information")}</a>
                 {game &&
-                    <a onClick={this.gameAnalyze} className={goban && goban.engine.phase !== "finished" && goban.engine.disable_analysis ? "disabled" : ""} >
+                    <a onClick={this.gameAnalyze} className={goban && goban.engine.phase !== "finished" && goban.isAnalysisDisabled() ? "disabled" : ""} >
                         <i className="fa fa-sitemap"></i> {_("Analyze game")}
                     </a>
                 }
                 {(goban && this.state.user_is_player && goban.engine.phase !== "finished" || null) &&
                     <a style={{visibility: goban.mode === "play" && goban && goban.engine.playerToMove() !== data.get("user").id ? "visible" : "hidden"}}
-                       className={goban && goban.engine.phase !== "finished" && goban.engine.disable_analysis ? "disabled" : ""}
+                       className={goban && goban.engine.phase !== "finished" && goban.isAnalysisDisabled() ? "disabled" : ""}
                        onClick={this.enterConditionalMovePlanner}>
                        <i className="fa fa-exchange"></i> {_("Plan conditional moves")}
                     </a>
                 }
-                {(goban && this.state.user_is_player && goban.engine.phase !== "finished" || null) &&
+                {(goban && (this.state.user_is_player || mod) && goban.engine.phase !== "finished" || null) &&
                     <a onClick={this.pauseGame}><i className="fa fa-pause"></i> {_("Pause game")}</a>
                 }
                 {game &&
-                    <a onClick={this.startReview} className={goban && goban.engine.phase !== "finished" && goban.engine.disable_analysis ? "disabled" : ""}>
+                    <a onClick={this.startReview} className={goban && goban.engine.phase !== "finished" && goban.isAnalysisDisabled() ? "disabled" : ""}>
                         <i className="fa fa-refresh"></i> {_("Review this game")}
                     </a>
                 }
-                {game && <a onClick={this.estimateScore}><i className="fa fa-tachometer"></i> {_("Estimate score")}</a>}
+                <a onClick={this.estimateScore} className={goban && goban.engine.phase !== "finished" && goban.isAnalysisDisabled() ? "disabled" : ""}>
+                    <i className="fa fa-tachometer"></i> {_("Estimate score")}
+                </a>
                 <a onClick={this.fork}><i className="fa fa-code-fork"></i> {_("Fork game")}</a>
                 <a onClick={this.alertModerator}><i className="fa fa-exclamation-triangle"></i> {_("Call moderator")}</a>
-                {review && game_id && <Link to={`/game/${game_id}`}><i className="ogs-goban"/> {_("Original game")}</Link>}
+                {((review && game_id) || null) && <Link to={`/game/${game_id}`}><i className="ogs-goban"/> {_("Original game")}</Link>}
                 <a onClick={this.showLinkModal}><i className="fa fa-share-alt"></i> {review ? _("Link to review") : _("Link to game")}</a>
-                <a onClick={this.downloadSGF}><i className="fa fa-download"></i> {_("Download SGF")}</a>
-                {mod && <hr/>}
+                {sgf_download_enabled
+                    ? <a href={sgf_url} target='_blank'><i className="fa fa-download"></i> {_("Download SGF")}</a>
+                    : <a className='disabled' onClick={() => swal(_("SGF downloading for this game is disabled until the game is complete."))}><i className="fa fa-download"></i> {_("Download SGF")}</a>
+                }
+                {(sgf_download_enabled && sgf_with_ai_review_url)
+                    && <a href={sgf_with_ai_review_url} target='_blank'><i className="fa fa-download"></i> {_("SGF with AI Review")}</a>
+                }
+                {(sgf_download_enabled && sgf_with_comments_url)
+                    && <a href={sgf_with_comments_url} target='_blank'><i className="fa fa-download"></i> {_("SGF with comments")}</a>
+                }
+                {(mod || annul) && <hr/>}
                 {mod && <a onClick={this.decide_black}><i className="fa fa-gavel"></i> {_("Black Wins")}</a>}
                 {mod && <a onClick={this.decide_white}><i className="fa fa-gavel"></i> {_("White Wins")}</a>}
                 {mod && <a onClick={this.decide_tie}><i className="fa fa-gavel"></i> {_("Tie")}</a>}
+
+                {(annul && annulable) && <a onClick={() => this.annul(true)}><i className="fa fa-gavel"></i> {_("Annul")}</a> /* mod can annul this game */}
+                {(annul && unannulable) && <a onClick={() => this.annul(false)}><i className="fa fa-gavel unannulable"></i> {"Remove annulment"}</a> /* mod can't annul, presumably because it's already annulled */}
+                {(annul && !annulable && !unannulable) && <div><i className="fa fa-gavel greyed"></i> {_("Annul")}</div> /* What is this case?! */}
+
+                {(mod || annul) && <hr/>}
+                {(mod || annul) && <a onClick={this.toggleShowTiming}><i className="fa fa-clock-o"></i> {_("Timing")}</a>}
+
+                {(supporter_ai_review_ready) && <hr/>}
+                {(superuser_ai_review_ready) && <a onClick={() => this.force_ai_review("fast")}><i className="fa fa-line-chart"></i> {"Fast AI Review"}</a>}
+                {(supporter_ai_review_ready) && <a onClick={() => this.force_ai_review("full")}><i className="fa fa-area-chart"></i> {_("Full AI Review")}</a>}
+                {(superuser_ai_review_ready) && <a onClick={this.delete_ai_reviews}><i className="fa fa-trash"></i> {"Delete AI reviews"}</a>}
             </Dock>
         );
-    }}}
-    frag_kb_shortcuts() {{{
+    }
+    frag_kb_shortcuts() {
         let goban = this.goban;
 
         return (
@@ -2361,14 +3214,16 @@ export class Game extends OGSComponent<GameProperties, any> {
                 <KBShortcut shortcut="f6" action={this.set_analyze_tool.label_circle}/>
                 <KBShortcut shortcut="f7" action={this.set_analyze_tool.label_letters}/>
                 <KBShortcut shortcut="f8" action={this.set_analyze_tool.label_numbers}/>
+                <KBShortcut shortcut="ctrl-c" action={this.goban_copyBranch}/>
+                <KBShortcut shortcut="ctrl-v" action={this.goban_pasteBranch}/>
                 <KBShortcut shortcut="f9" action={this.set_analyze_tool.draw}/>
                 {((goban && goban.mode === "analyze") || null) && <KBShortcut shortcut="f10" action={this.set_analyze_tool.clear_and_sync}/>}
                 <KBShortcut shortcut="del" action={this.set_analyze_tool.delete_branch}/>
             </div>
         );
-    }}}
+    }
 
-    renderExtraPlayerActions = (player_id: number, user: any) => {{{
+    renderExtraPlayerActions = (player_id: number, unused: any) => {
         let user = data.get("user");
         if (this.review_id && this.goban && (this.goban.review_controller_id === user.id || this.goban.review_owner_id === user.id)) {
             let is_owner = null;
@@ -2408,20 +3263,18 @@ export class Game extends OGSComponent<GameProperties, any> {
                     </div>
                 </div>
             );
-            //            <button className='xs' onClick={()=>{
-            //                this.goban.giveVoice(player_id);
-            //                close_all_popovers();
-            //            }}>{_("Give Voice") /* translators: Allow user to voice chat in a review or demo */}</button>
-            //            <button className='xs' onClick={()=>{
-            //                this.goban.removeVoice(player_id);
-            //                close_all_popovers();
-            //            }}>{_("Remove Voice") /* translators: Remove ability for a user to voice chat in a demo or review */}</button>
         }
         return null;
-    }}}
+    }
+    setMoveTreeContainer = (resizable:Resizable):void => {
+        this.ref_move_tree_container = resizable ? resizable.div : null;
+        if (this.goban) {
+            (this.goban as GobanCanvas).setMoveTreeContainer(this.ref_move_tree_container);
+        }
+    }
 }
 
-export function goban_view_mode(bar_width?: number): ViewMode {{{
+export function goban_view_mode(bar_width?: number): ViewMode {
     if (!bar_width) {
         bar_width = 300;
     }
@@ -2429,8 +3282,6 @@ export function goban_view_mode(bar_width?: number): ViewMode {{{
     let h = win.height() || 1;
     let w = win.width() || 1;
     let aspect_ratio = w / h;
-
-    //swal('' + aspect_ratio + ` ${w}x${h}`);
 
     if (((aspect_ratio <= 0.8) || w < bar_width * 2) && w < 1280) {
         return "portrait";
@@ -2440,418 +3291,9 @@ export function goban_view_mode(bar_width?: number): ViewMode {{{
         return "wide";
     }
 
-    //swal('' + aspect_ratio);
-
-    //return 'square';
     return "wide";
-}}}
-export function goban_view_squashed(): boolean {{{
-    //return win.height() < 680;
+}
+export function goban_view_squashed(): boolean {
     /* This value needs to match the "dock-inline-height" found in Dock.styl */
     return win.height() <= 500;
-}}}
-
-/* Chat {{{ */
-
-
-export class GameChat extends React.PureComponent<GameChatProperties, any> {
-    refs: {
-        chat_log;
-    };
-
-    scrolled_to_bottom: boolean = true;
-
-    constructor(props) { /* {{{ */
-        super(props);
-        this.state = {
-            chat_log: "main",
-            show_player_list: false,
-        };
-        this.chat_log_filter = this.chat_log_filter.bind(this);
-        this.onKeyPress = this.onKeyPress.bind(this);
-        this.updateScrollPosition = this.updateScrollPosition.bind(this);
-    } /* }}} */
-
-    chat_log_filter(line) {{{
-        return true;
-    }}}
-    onKeyPress(event) {{{
-        if (event.charCode === 13) {
-            let input = event.target as HTMLInputElement;
-            this.props.gameview.goban.sendChat(input.value, this.state.chat_log);
-            input.value = "";
-            return false;
-        }
-    }}}
-
-    componentDidMount() {{{
-        this.autoscroll();
-    }}}
-    componentDidUpdate() {{{
-        this.autoscroll();
-    }}}
-
-    updateScrollPosition() {{{
-        let tf = this.refs.chat_log.scrollHeight - this.refs.chat_log.scrollTop - 10 < this.refs.chat_log.offsetHeight;
-        if (tf !== this.scrolled_to_bottom) {
-            this.scrolled_to_bottom  = tf;
-            this.refs.chat_log.className = "chat-log " + (tf ? "autoscrolling" : "");
-        }
-        this.scrolled_to_bottom = this.refs.chat_log.scrollHeight - this.refs.chat_log.scrollTop - 10 < this.refs.chat_log.offsetHeight;
-    }}}
-    autoscroll() {{{
-        if (this.scrolled_to_bottom) {
-            this.refs.chat_log.scrollTop = this.refs.chat_log.scrollHeight;
-            setTimeout(() => {
-                if (this.refs && this.refs.chat_log) {
-                    this.refs.chat_log.scrollTop = this.refs.chat_log.scrollHeight;
-                }
-            }, 100);
-        }
-    }}}
-    toggleChatLog = () => {{{
-        let new_chat_log = this.state.chat_log === "main" ? "malkovich" : "main";
-        this.setState({
-            chat_log: new_chat_log
-        });
-        this.props.onChatLogChanged(new_chat_log);
-    }}}
-    togglePlayerList = () => {{{
-        this.setState({
-            show_player_list: !this.state.show_player_list
-        });
-    }}}
-    togglePlayerListSortOrder = () => {{{
-    }}}
-
-    render() {{{
-        let last_line = null;
-        let user = data.get("user");
-        let channel = this.props.gameview.game_id ? `game-${this.props.gameview.game_id}` : `review-${this.props.gameview.review_id}`;
-
-        return (
-            <div className="chat-container">
-                <div className={"log-player-container" + (this.state.show_player_list ? " show-player-list" : "")}>
-                    <div className="chat-log-container">
-                        <div ref="chat_log" className="chat-log autoscrolling" onScroll={this.updateScrollPosition}>
-                            {this.props.chatlog.filter(this.chat_log_filter).map((line, idx) => {
-                                //console.log(">>>" ,line.chat_id)
-                                let ll = last_line;
-                                last_line = line;
-                                //jreturn <GameChatLine key={line.chat_id} line={line} lastline={ll} gameview={this.props.gameview} />
-                                return <GameChatLine key={idx} line={line} lastline={ll} gameview={this.props.gameview} />;
-                            })}
-                        </div>
-                    </div>
-                    {(this.state.show_player_list || null) &&
-                        <ChatUserList channel={channel} />
-                    }
-                </div>
-                <div className="chat-input-container input-group">
-                    {((this.props.userIsPlayer && data.get('user').email_validated) || null) &&
-                        <button
-                            className={`chat-input-chat-log-toggle sm ${this.state.chat_log}`}
-                            onClick={this.toggleChatLog}
-                            >
-                            {this.state.chat_log === "malkovich" ? _("Malkovich") : _("Chat")} <i className={"fa " + (this.state.chat_log === "malkovich" ? "fa-caret-up" : "fa-caret-down")}/>
-                        </button>
-                    }
-                    <TabCompleteInput className={`chat-input  ${this.state.chat_log}`}
-                        disabled={user.anonymous || !data.get('user').email_validated}
-                        placeholder={user.anonymous
-                            ? _("Login to chat")
-                            : !data.get('user').email_validated ? _("Chat will be enabled once your email address has been validated")
-                                : (this.state.chat_log === "malkovich"
-                                    ? _("Leave a note that will only be visible after the game")
-                                    : _("Say hi!")
-                                  )
-                        }
-                        onKeyPress={this.onKeyPress}
-                    />
-                    <ChatUserCount
-                        chat={this}
-                        active={this.state.show_player_list}
-                        channel={channel}
-                    />
-                </div>
-            </div>
-        );
-    }}}
 }
-
-
-function parsePosition(position: string) {{{
-    if (!active_game_view) { return; }
-    let goban = active_game_view.goban;
-
-    let i = "abcdefghjklmnopqrstuvwxyz".indexOf(position[0].toLowerCase());
-    let j = ((goban && goban.height) || 19) - parseInt(position.substr(1));
-    if (j < 0 || i < 0) {
-        i = -1;
-        j = -1;
-    }
-    if (i >= ((goban && goban.width) || 19) || j >= ((goban && goban.height) || 19)) {
-        i = -1;
-        j = -1;
-    }
-    return {"i": i, "j": j};
-}}}
-function highlight_position(event) {{{
-    if (!active_game_view) { return; }
-
-    let pos = parsePosition(event.target.innerText);
-    if (pos.i >= 0) {
-        active_game_view.goban.getMarks(pos.i, pos.j).chat_triangle = true;
-        active_game_view.goban.drawSquare(pos.i, pos.j);
-    }
-}}}
-function unhighlight_position(event) {{{
-    if (!active_game_view) { return; }
-
-    let pos = parsePosition(event.target.innerText);
-    if (pos.i >= 0) {
-        active_game_view.goban.getMarks(pos.i, pos.j).chat_triangle = false;
-        active_game_view.goban.drawSquare(pos.i, pos.j);
-    }
-}}}
-
-export class GameChatLine extends React.Component<GameChatLineProperties, any> {
-    //scrolled_to_bottom:any = {"malkovich": true, "main": true};
-
-    constructor(props) {
-        super(props);
-    }
-
-    chat_markup(body, extra_pattern_replacements?: Array<{split: RegExp; pattern: RegExp; replacement: ((m: any, idx: number) => any)}>): Array<JSX.Element> {{{
-        let replacements = [
-            {split: /(https?:\/\/[^<> ]+)/gi, pattern: /(https?:\/\/[^<> ]+)/gi, replacement: (m, idx) => (<a key={idx} target="_blank" href={m[1]}>{m[1]}</a>)},
-            {split: /([^<> ]+[@][^<> ]+[.][^<> ]+)/gi,  pattern: /([^<> ]+[@][^<> ]+[.][^<> ]+)/gi,  replacement: (m, idx) => (<a key={idx} target="_blank" href={"mailto:" + m[1]}>{m[1]}</a>)},
-            {split: /(^##[0-9]{3,}|[ ]##[0-9]{3,})/gi, pattern: /(^##([0-9]{3,})|([ ])##([0-9]{3,}))/gi,
-                replacement: (m, idx) => (<Link key={idx} to={`/review/${m[2] || ""}${m[4] || ""}`}>{`${m[3] || ""}##${m[2] || ""}${m[4] || ""}`}</Link>)},
-            {split: /(^#[0-9]{3,}|[ ]#[0-9]{3,})/gi, pattern: /(^#([0-9]{3,})|([ ])#([0-9]{3,}))/gi,
-                replacement: (m, idx) => (<Link key={idx} to={`/game/${m[2] || ""}${m[4] || ""}`}>{`${m[3] || ""}#${m[2] || ""}${m[4] || ""}`}</Link>)},
-            {split: /(#group-[0-9]+)/gi, pattern: /(#group-([0-9]+))/gi, replacement: (m, idx) => (<Link key={idx} to={`/group/${m[2]}`}>{m[1]}</Link>)},
-            {split: /(#group-[0-9]+)/gi, pattern: /(#group-([0-9]+))/gi, replacement: (m, idx) => (<Link key={idx} to={`/group/${m[2]}`}>{m[1]}</Link>)},
-            {split: /(%%%PLAYER-[0-9]+%%%)/g, pattern: /(%%%PLAYER-([0-9]+)%%%)/g, replacement: (m, idx) => (<Player key={idx} user={parseInt(m[2])}/>)},
-        ];
-
-        if (extra_pattern_replacements) {
-            replacements = replacements.concat(extra_pattern_replacements);
-        }
-
-        let ret = [profanity_filter(body)];
-        for (let r of replacements) {
-            ret = [].concat.apply([], ret.map((text_fragment) => {
-                return text_fragment.split(r.split);
-            }));
-        }
-
-        for (let i = 0; i < ret.length; ++i) {
-            let fragment = ret[i];
-            let matched = false;
-            for (let r of replacements) {
-                let m = r.pattern.exec(fragment);
-                if (m) {
-                    ret[i] = r.replacement(m, i);
-                    matched = true;
-                    break;
-                }
-            }
-            if (!matched) {
-                ret[i] = <span key={i}>{ret[i]}</span>;
-            }
-        }
-
-        return ret;
-    }}}
-
-    markup(body): JSX.Element|Array<JSX.Element> {{{
-        if (typeof(body) === "string") {
-            return this.chat_markup(body, [
-                {split: /(\b[a-zA-Z][0-9]{1,2}\b)/mg, pattern: /\b([a-zA-Z][0-9]{1,2})\b/mg,
-                    replacement: (m, idx) => {
-                        let pos = m[1];
-                        if (parsePosition(pos).i < 0) {
-                            return (<span key={idx}>{m[1]}</span>);
-                        }
-                        return (<span key={idx} className="position" onMouseEnter={highlight_position} onMouseLeave={unhighlight_position}>{m[1]}</span>);
-                    }
-                },
-            ]);
-        } else {
-            try {
-                switch (body.type) {
-                    case "analysis":
-                        {
-                            let gameview = this.props.gameview;
-                            let goban = gameview.goban;
-                            let orig_move = null;
-                            let stashed_pen_marks = goban.pen_marks;
-                            let orig_marks = null;
-
-                            let v = parseInt("" + (body.name ? body.name.replace(/^[^0-9]*/, "") : 0));
-                            if (v) {
-                                this.props.gameview.last_variation_number = Math.max(v, this.props.gameview.last_variation_number);
-                            }
-
-                            let onLeave = () => {
-                                if (this.props.gameview.in_pushed_analysis) {
-                                    this.props.gameview.in_pushed_analysis = false;
-                                    this.props.gameview.leave_pushed_analysis = null;
-                                    goban.engine.jumpTo(orig_move);
-                                    orig_move.marks = orig_marks;
-                                    goban.pen_marks = stashed_pen_marks;
-                                    if (goban.pen_marks.length === 0) {
-                                        goban.detachPenCanvas();
-                                    }
-                                    goban.redraw();
-                                }
-                            };
-
-                            let onEnter = () => {
-                                this.props.gameview.in_pushed_analysis = true;
-                                this.props.gameview.leave_pushed_analysis = onLeave;
-                                let turn = "branch_move" in body ? body.branch_move - 1 : body.from; /* branch_move exists in old games, and was +1 from our current counting */
-                                let moves = body.moves;
-
-                                orig_move = goban.engine.cur_move;
-                                orig_marks = orig_move.marks;
-                                orig_move.clearMarks();
-                                goban.engine.followPath(parseInt(turn), moves);
-
-                                if (body.marks) {
-                                    goban.setMarks(body.marks);
-                                }
-                                stashed_pen_marks = goban.pen_marks;
-                                if (body.pen_marks) {
-                                    goban.pen_marks = [].concat(body.pen_marks);
-                                } else {
-                                    goban.pen_marks = [];
-                                }
-
-                                goban.redraw();
-                            };
-
-                            let onClick = () => {
-                                onLeave();
-                                goban.setMode("analyze");
-                                onEnter();
-                                this.props.gameview.in_pushed_analysis = false;
-                                goban.updateTitleAndStonePlacement();
-                                goban.syncReviewMove();
-                                goban.redraw();
-                            };
-
-                            return (
-                                <span className="variation"
-                                    onMouseEnter={onEnter}
-                                    onMouseLeave={onLeave}
-                                    onClick={onClick}
-                                >
-                                    {_("Variation") + ": " + (body.name ? profanity_filter(body.name) : "<error>")}
-                                </span>
-                            );
-                        }
-                    case "review":
-                        return <Link to={`/review/${body.review_id}`}>{interpolate(_("Review: ##{{id}}"), {"id": body.review_id})}</Link>;
-                    default:
-                        return <span>[error loading chat line]</span>;
-                }
-            } catch (e) {
-                console.log(e.stack);
-                return <span>[error loading chat line]</span>;
-            }
-        }
-    }}}
-
-    shouldComponentUpdate(next_props, _next_state) {{{
-        return this.props.line.chat_id !== next_props.line.chat_id;
-    }}}
-
-    jumpToMove = () => {{{
-       let line = this.props.line;
-       let goban = this.props.gameview.goban;
-
-       if ("move_number" in line) {
-           if (!goban.engine.config.disable_analysis) {
-               goban.setMode("analyze");
-           }
-
-            goban.engine.followPath(line.move_number, "");
-            goban.redraw();
-
-            if (goban.engine.config.disable_analysis) {
-                goban.updatePlayerToMoveTitle();
-            }
-
-            goban.emit("update");
-       }
-
-       if ("from" in line) {
-            let mvs = goban.engine.decodeMoves(line.moves);
-            let ct = 0;
-            for (let i = 0; i < mvs.length; ++i) {
-                ct += mvs[i].edited ? 0 : 1;
-            }
-
-            if (goban.engine.config.disable_analysis) {
-                goban.setMode("analyze");
-            }
-
-            goban.engine.followPath(line.from, line.moves);
-            goban.syncReviewMove();
-            goban.drawPenMarks(goban.engine.cur_move.pen_marks);
-            goban.redraw();
-            //last_move_number[type] = line.from;
-            //last_moves[type] = line.moves;
-       }
-
-    }}}
-
-    render() {{{
-        let line = this.props.line;
-        let lastline = this.props.lastline;
-        let ts = line.date ? new Date(line.date * 1000) : null;
-        let third_person = "";
-        if (typeof(line.body) === "string" && line.body.substr(0, 4) === "/me ") {
-            third_person = (line.body.substr(0, 4) === "/me ") ? "third-person" : "";
-            line.body = line.body.substr(4);
-        }
-        let msg = this.markup(line.body);
-        let show_date: JSX.Element = null;
-        let move_number: JSX.Element = null;
-
-        if (!lastline || (line.date && lastline.date)) {
-            if (line.date) {
-                if (!lastline || moment(new Date(line.date * 1000)).format("YYYY-MM-DD") !== moment(new Date(lastline.date * 1000)).format("YYYY-MM-DD")) {
-                    show_date = <div className="date">{moment(new Date(line.date * 1000)).format("LL")}</div>;
-                }
-            }
-        }
-
-
-        if (!lastline || (line.move_number !== lastline.move_number) || (line.from !== lastline.from) || (line.moves !== lastline.moves)) {
-            move_number = <LineText className="move-number" onClick={this.jumpToMove}>Move {
-                ("move_number" in line
-                    ? line.move_number
-                    : ("moves" in line ? (line.from + (line.moves.length ? " + " + line.moves.length / 2 : "")) : "")
-                )
-            }</LineText>;
-        }
-
-
-        return (
-            <div className={`chat-line-container`}>
-                {move_number}
-                {show_date}
-                <div className={`chat-line ${line.channel} ${third_person}`}>
-                    {(ts) && <span className="timestamp">[{ts.getHours() + ":" + (ts.getMinutes() < 10 ? "0" : "") + ts.getMinutes()}] </span>}
-                    {(line.player_id || null) && <Player user={line} />}
-                    <span className="body">{third_person ? " " : ": "}{msg}</span>
-                </div>
-            </div>
-        );
-    }}}
-}
-
-/* }}} */

@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2012-2017  Online-Go.com
+ * Copyright (C) 2012-2020  Online-Go.com
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU Affero General Public License as
@@ -16,14 +16,16 @@
  */
 
 import * as React from "react";
-import {Link, browserHistory} from "react-router";
+import ReactResizeDetector from 'react-resize-detector';
+import {Link} from "react-router-dom";
+import {browserHistory} from "ogsHistory";
 import {_, pgettext, interpolate} from "translate";
 import {post, get} from "requests";
 import {errorAlerter} from "misc";
 import {Player} from "Player";
 import {PaginatedTable} from "PaginatedTable";
 import {UIPush} from "UIPush";
-import data from "data";
+import * as data from "data";
 import tooltip from "tooltip";
 
 declare var swal;
@@ -56,38 +58,32 @@ export class LadderComponent extends React.PureComponent<LadderComponentProperti
 
     componentDidMount() {
         this.reload();
-        $(window).on("resize", this.re_render);
     }
-    componentWillReceiveProps(next_props) {
+    UNSAFE_componentWillReceiveProps(next_props) {
     }
     componentDidUpdate(old_props, old_state) {
         if (this.props.ladderId !== old_props.ladderId) {
             this.reload();
         }
     }
-    componentWillUnmount() {
-        $(window).off("resize", this.re_render);
-    }
 
-    re_render = () => {
+    onResize = () => {
         this.forceUpdate();
     }
 
-
-
-    reload = () => {{{
-        get(`ladders/${this.props.ladderId}`)
+    reload = () => {
+        get("ladders/%%", this.props.ladderId)
         .then((ladder) => this.setState({ladder: ladder}))
         .catch(errorAlerter);
 
         this.updatePlayers();
-    }}}
+    }
 
-    updatePlayers = () => {{{
+    updatePlayers = () => {
         if (this.refs.ladder) {
             this.refs.ladder.update();
         }
-    }}}
+    }
 
     challenge(ladder_player) {
         console.log(ladder_player);
@@ -99,7 +95,7 @@ export class LadderComponent extends React.PureComponent<LadderComponentProperti
             "cancelButtonText": _("No"),
         })
         .then(() => {
-            post(`ladders/${this.props.ladderId}/players/challenge`, {
+            post("ladders/%%/players/challenge", this.props.ladderId, {
                 "player_id": ladder_player.player.id,
             })
             .then((res) => {
@@ -118,7 +114,7 @@ export class LadderComponent extends React.PureComponent<LadderComponentProperti
         let full_view = this.props.fullView;
         let startingPage = 1;
         if (!this.props.dontStartOnPlayersPage && this.state.ladder.player_rank > 0) {
-            startingPage = Math.max(1, Math.floor(this.state.ladder.player_rank / this.state.page_size) + 1);
+            startingPage = Math.max(1, Math.ceil(this.state.ladder.player_rank / this.state.page_size));
         }
 
         let thin_view = $(window).width() < 800;
@@ -149,7 +145,7 @@ export class LadderComponent extends React.PureComponent<LadderComponentProperti
                                 lp.incoming_challenges.sort(by_ladder_rank).map((challenge, idx) => (
                                     <div key={idx}>
                                     <Link className="challenge-link" to={`/game/${challenge.game_id}`}>
-                                        <span className="challenge-rank">#{challenge.player.ladder_rank}</span> 
+                                        <span className="challenge-rank">#{challenge.player.ladder_rank}</span>
                                         <Player nolink user={challenge.player} />
                                     </Link>
                                     </div>
@@ -172,7 +168,7 @@ export class LadderComponent extends React.PureComponent<LadderComponentProperti
                                 lp.outgoing_challenges.sort(by_ladder_rank).map((challenge, idx) => (
                                     <div key={idx}>
                                     <Link className="challenge-link" to={`/game/${challenge.game_id}`}>
-                                        <span className="challenge-rank">#{challenge.player.ladder_rank}</span> 
+                                        <span className="challenge-rank">#{challenge.player.ladder_rank}</span>
                                         <Player nolink user={challenge.player} />
                                     </Link>
                                     </div>
@@ -187,6 +183,8 @@ export class LadderComponent extends React.PureComponent<LadderComponentProperti
 
         return (
             <div className="LadderComponent">
+                <ReactResizeDetector handleWidth handleHeight onResize={() => this.onResize()} />
+
                 <UIPush event="players-updated" channel={`ladder-${this.props.ladderId}`} action={this.updatePlayers} />
 
                 {(this.props.showTitle || null) &&
@@ -208,7 +206,7 @@ export class LadderComponent extends React.PureComponent<LadderComponentProperti
                     ref="ladder"
                     className="ladder"
                     name="ladder"
-                    source={`ladders/${this.props.ladderId}/players`}
+                    source={`ladders/${this.props.ladderId}/players` + (full_view ? '' : '?no_challenge_information=1')}
                     startingPage={startingPage}
                     pageSize={this.state.page_size}
                     pageSizeOptions={this.props.pageSizeOptions}
@@ -222,7 +220,7 @@ export class LadderComponent extends React.PureComponent<LadderComponentProperti
                                 (lp.player.id !== user.id && lp.can_challenge || null) && ( lp.can_challenge.challengeable
                                     ? <button className="primary xs" onClick={this.challenge.bind(this, lp)}>{_("Challenge")}</button>
                                     : <span className="not-challengable"
-                                          data-title={lp.can_challenge.reason}
+                                          data-title={canChallengeTooltip(lp.can_challenge)}
                                           onClick={tooltip}
                                           onMouseOver={tooltip}
                                           onMouseOut={tooltip}
@@ -259,4 +257,25 @@ export class LadderComponent extends React.PureComponent<LadderComponentProperti
             </div>
         );
     }
+}
+
+function canChallengeTooltip(obj:any):string {
+    if (obj.reason_code) {
+        switch (obj.reason_code) {
+            case 0x001: return pgettext("Can't challenge player in ladder because: ", "Can't challenge yourself");
+            case 0x002: return pgettext("Can't challenge player in ladder because: ", "Player is a lower rank than you");
+            case 0x003: return pgettext("Can't challenge player in ladder because: ", "Player is not in the ladder");
+            case 0x004: return pgettext("Can't challenge player in ladder because: ", "Player's rank is too high");
+            case 0x005: return interpolate(pgettext("Can't challenge player in ladder because: ", "Already playing {{number}} games you've initiated"), {"number": obj.reason_parameter });
+            case 0x006: return pgettext("Can't challenge player in ladder because: ", "Already playing a game against this person");
+            case 0x007: return pgettext("Can't challenge player in ladder because: ", "Last challenge within 7 days");
+            case 0x008: return pgettext("Can't challenge player in ladder because: ", "Player already has the maximum number of challenges");
+        }
+    }
+
+    if (obj.reason) {
+        return obj.reason;
+    }
+
+    return null;
 }

@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2012-2017  Online-Go.com
+ * Copyright (C) 2012-2020  Online-Go.com
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU Affero General Public License as
@@ -19,70 +19,63 @@ import * as React from "react";
 import {_} from "translate";
 import {Card} from "material";
 import {del, post, get} from "requests";
-import data from "data";
+import {browserHistory} from "ogsHistory";
+import * as data from "data";
 import {UIPush} from "UIPush";
 import {Player} from "Player";
-import {PlayerIcon} from "components";
-import {player_cache} from "player_cache";
+import {PlayerIcon} from "PlayerIcon";
+import * as player_cache from "player_cache";
 import {profanity_filter} from "profanity_filter";
 import {challenge_text_description} from "ChallengeModal";
 import {FabX, FabCheck} from "material";
 import {ignore} from "misc";
+import cached from 'cached';
 
 
-export class ChallengesList extends React.PureComponent<{}, any> {
+export class ChallengesList extends React.PureComponent<{onAccept:() => void}, any> {
     constructor(props) {
         super(props);
         this.state = {
             challenges: [],
-            resolved: false
         };
     }
 
-    componentDidMount() {{{
-        this.refresh();
-    }}}
-    componentWillUnmount() {{{
-    }}}
+    componentDidMount() {
+        data.watch(cached.challenge_list, this.update);
+    }
+    componentWillUnmount() {
+        data.unwatch(cached.challenge_list, this.update);
+    }
+    update = (challenge_list) => {
+        this.setState({"challenges": challenge_list});
+    }
 
-    refresh = () => {{{
-        get("me/challenges", {page_size: 30}).then((res) => {
-            for (let challenge of res.results) {
-                player_cache.update(challenge.challenger);
-                player_cache.update(challenge.challenged);
-                challenge.game.time_control = JSON.parse(challenge.game.time_control_parameters);
+    deleteChallenge(challenge) {
+        del("me/challenges/%%", challenge.id)
+        .then(ignore)
+        .catch(ignore);
+        this.setState({challenges: this.state.challenges.filter(c => c.id !== challenge.id)});
+    }
+    acceptChallenge(challenge) {
+        post("me/challenges/%%/accept", challenge.id, {})
+        .then((res) => {
+            if (res.time_per_move > 0 && res.time_per_move < 1800) {
+                browserHistory.push(`/game/${res.game}`);
+            } else {
+                if (this.props.onAccept) {
+                    this.props.onAccept();
+                }
             }
-            this.setState({"challenges": res.results, resolved: true});
-        }).catch((err) => {
-            this.setState({resolved: true});
-            console.info("Caught", err);
-        });
-    }}}
-
-    deleteChallenge(challenge) {{{
-        del(`me/challenges/${challenge.id}`)
-        .then(ignore)
+        })
         .catch(ignore);
         this.setState({challenges: this.state.challenges.filter(c => c.id !== challenge.id)});
-    }}}
-    acceptChallenge(challenge) {{{
-        post(`me/challenges/${challenge.id}/accept`, {})
-        .then(ignore)
-        .catch(ignore);
-        this.setState({challenges: this.state.challenges.filter(c => c.id !== challenge.id)});
-    }}}
+    }
 
-    render() {{{
+    render() {
         let user = data.get('user');
-
-        if (!this.state.resolved) {
-            return null;
-        }
 
         return (
             <div className="ChallengesList">
-                <UIPush event="challenge-list-updated" action={this.refresh} />
-
                 {(this.state.challenges.length > 0) &&
                     <h2>{_("Challenges")}</h2>
                 }
@@ -112,5 +105,5 @@ export class ChallengesList extends React.PureComponent<{}, any> {
                 </div>
             </div>
         );
-    }}}
+    }
 }

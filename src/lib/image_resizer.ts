@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2012-2017  Online-Go.com
+ * Copyright (C) 2012-2020  Online-Go.com
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU Affero General Public License as
@@ -64,7 +64,8 @@ export function image_resizer(file: File, max_width: number, max_height?: number
         canvas.getContext("2d").drawImage(image, 0, 0, width, height);
         let dataUrl = canvas.toDataURL("image/png");
         let blob: any = dataURItoBlob(dataUrl);
-        blob.lastModifiedDate = file.lastModifiedDate;
+        //blob.lastModifiedDate = file.lastModifiedDate;
+        blob.lastModified = file.lastModified;
         blob.name = file.name;
         return blob as File;
     };

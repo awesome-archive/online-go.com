@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2012-2017  Online-Go.com
+ * Copyright (C) 2012-2020  Online-Go.com
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU Affero General Public License as
@@ -17,9 +17,10 @@
 
 import * as React from "react";
 import {_} from "translate";
-import {Link} from "react-router";
+import {Link} from "react-router-dom";
 import {termination_socket} from "sockets";
-import data from "data";
+import * as data from "data";
+import {ServerTimeDisplay} from "ServerTimeDisplay";
 
 declare var ogs_release;
 declare var ogs_version;
@@ -33,7 +34,8 @@ export class About extends React.Component<{}, any> {
         };
     }
 
-    componentWillMount() {
+    UNSAFE_componentWillMount() {
+        window.document.title = _("About");
         termination_socket.on("connect", () => {
             console.log("Got connect[term]");
             termination_socket.send("versions", true, (res) => this.setState({termination_versions: res}));
@@ -60,7 +62,7 @@ export class About extends React.Component<{}, any> {
                         </span>
                     </h2>
 
-                    {_("Online-go.com is made possible by the generous financial support from hundreds of indivdiual site supporters, the guidance and welcome friendly attitudes of the Go community at large, and by a large collection of volunteers that have helped translate Online-Go.com into a multitude of different languages from all over the world.")}
+                    {_("Online-go.com is made possible by the generous financial support from hundreds of individual site supporters, the guidance and welcome friendly attitudes of the Go community at large, and by a large collection of volunteers that have helped translate Online-Go.com into a multitude of different languages from all over the world.")}
 
                     <h4 className="about-links">
                         <a href="https://translate.online-go.com" target="_blank">{_("Help translate Online-Go.com")}</a>
@@ -85,6 +87,9 @@ export class About extends React.Component<{}, any> {
                         <div><span className="version-details">API: {server_version}</span></div>
                     </div>
 
+                    <div className='server-time'>
+                        <ServerTimeDisplay />
+                    </div>
                 </div>
             </div>
         );

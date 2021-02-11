@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2012-2017  Online-Go.com
+ * Copyright (C) 2012-2020  Online-Go.com
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU Affero General Public License as
@@ -17,10 +17,21 @@
 
 .GobanLineSummaryContainer {
     //display: table
-    width: 100%;
-    max-width: 100vw;
+    width: auto;
+    max-width: max-content;
     overflow-x: auto;
+    margin-left: auto;
+    margin-right: auto;
 }
+
+.GobanLineSummary {
+    themed color fg;
+    &:hover {
+        text-decoration: none;
+        themed color fg;
+    }
+}
+
 .GobanLineSummary, .GobanLineSummaryContainerHeader {
     display: table-row;
 
@@ -46,6 +57,10 @@
 
     .game-name, .player {
         text-align: left;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+        max-width: 13em;
     }
 
     &.in-stone-removal-phase {

@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2012-2017  Online-Go.com
+ * Copyright (C) 2012-2020  Online-Go.com
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU Affero General Public License as
@@ -17,7 +17,9 @@
 
 
 import * as React from "react";
-import {Link, browserHistory} from 'react-router';
+import {Link} from "react-router-dom";
+import {Markdown} from "Markdown";
+import {browserHistory} from "ogsHistory";
 import {_, pgettext, interpolate} from "translate";
 import {Goban} from "goban";
 import {PersistentElement} from "PersistentElement";
@@ -26,10 +28,13 @@ import {openNewGameModal} from "NewGameModal";
 
 
 interface TutorialProperties {
-    params:any;
+    match: {
+        params:any
+    };
 }
 
 const NUM_PAGES = 12;
+declare var ogs_current_language;
 
 export class Tutorial extends React.PureComponent<TutorialProperties, any> {
     constructor(props) {
@@ -37,7 +42,7 @@ export class Tutorial extends React.PureComponent<TutorialProperties, any> {
     }
 
     render() {
-        let page_number = parseInt(this.props.params.step || 0);
+        let page_number = parseInt(this.props.match.params.step || 0);
 
         switch (page_number) {
             case 0: return <ThisIsAGoban />;
@@ -61,7 +66,7 @@ export class Tutorial extends React.PureComponent<TutorialProperties, any> {
 interface TutorialPageProperties {
 }
 
-abstract class TutorialPage extends React.PureComponent<TutorialPageProperties, any> { /* {{{ */
+abstract class TutorialPage extends React.PureComponent<TutorialPageProperties, any> {
     refs: {
         igoban;
     };
@@ -80,46 +85,46 @@ abstract class TutorialPage extends React.PureComponent<TutorialPageProperties, 
     }
 
 
-    getCurrentStep() {{{
+    getCurrentStep() {
         if (/[0-9]+/.test(window.location.pathname)) {
             return parseInt(window.location.pathname.match(/([0-9]+)/)[1]);
         }
         return 0;
-    }}}
-    next = () => {{{
+    }
+    next = () => {
         let step = Math.max(0, Math.min(NUM_PAGES - 1, this.getCurrentStep() + 1));
         console.log("Next step: ", this.getCurrentStep(), step);
         browserHistory.push(`/learn-to-play-go/${step}`);
-    }}}
-    reset = () => {{{
+    }
+    reset = () => {
         //let step = Math.max(0, Math.min(NUM_PAGES - 1, this.getCurrentStep()));
         window.location.reload();
         //browserHistory.replace(`/learn-to-play-go/${step}?n=` + Date.now());
-    }}}
+    }
 
 
-    componentDidMount() {{{
+    componentDidMount() {
         this.setState({show_next: this.showNext()});
-    }}}
-    showReset():boolean {{{
+    }
+    showReset():boolean {
         return false;
-    }}}
-    showNext():boolean {{{
+    }
+    showNext():boolean {
         return true;
-    }}}
-    onUpdate = () => {{{
+    }
+    onUpdate = () => {
         this.setState({
             show_reset: this.showReset(),
             show_next: this.showNext(),
         });
-    }}}
+    }
 
     abstract text();
     abstract config();
 
     render() {
         return (
-            <div className='Tutorial'>
+            <div className='Tutorial page-width'>
                 <div className='TutorialPage'>
                     <div className='tutorial-text'>
                         {this.text()}
@@ -135,10 +140,10 @@ abstract class TutorialPage extends React.PureComponent<TutorialPageProperties, 
             </div>
         );
     }
-} /* }}} */
+}
 
 
-class ThisIsAGoban extends TutorialPage { /* {{{ */
+class ThisIsAGoban extends TutorialPage {
     constructor(props) {
         super(props);
 
@@ -149,21 +154,18 @@ class ThisIsAGoban extends TutorialPage { /* {{{ */
             return (
                 <div>
                     <p>
-                        Welcome to Go! We'll be learning on a 9x9 board (or <i>&ldquo;goban&rdquo;</i>) today. As you
-                        get better at the game, you'll play on 13x13 and 19x19 boards as well.
+                        <Markdown source={_("Welcome to Go! We'll be learning on a 9x9 board (or <i>&ldquo;goban&rdquo;</i>) today. As you get better at the game, you'll play on 13x13 and 19x19 boards as well.") /* translators: This is part of the tutorial */} />
                     </p>
 
                     <p>
-                        Go is a two player game. One plays as Black, the other as White. They
-                        take turns placing "Stones" on the board. Try placing a stone now.
+                        {_('Go is a two player game. One plays as Black, the other as White. They take turns placing "Stones" on the board. Try placing a stone now.') /* translators: This is part of the tutorial */}
                     </p>
                 </div>
             );
         } else {
             return (
                 <div>
-                    Great! Once a stone is placed, it cannot be moved. Stones can however
-                    be captured...
+                    {_("Great! Once a stone is placed, it cannot be moved. Stones can however be captured...")  /* translators: This is part of the tutorial */}
                 </div>
            );
         }
@@ -179,8 +181,8 @@ class ThisIsAGoban extends TutorialPage { /* {{{ */
     showNext() {
         return !!this.refs.igoban.goban.engine.cur_move.parent;
     }
-} /* }}} */
-class CapturingStones1 extends TutorialPage { /* {{{ */
+}
+class CapturingStones1 extends TutorialPage {
     constructor(props) {
         super(props);
     }
@@ -190,14 +192,13 @@ class CapturingStones1 extends TutorialPage { /* {{{ */
         if (!this.state.show_next) {
             return (
                 <p>
-                    Stones are captured by completely surrounding them. Capture the white
-                    stone by placing a black stone at <span className='coordinate'>E4</span>.
+                    <Markdown source={_("Stones are captured by completely surrounding them. Capture the white stone by placing a black stone at <span class='coordinate'>E4</span>.") /* translators: This is part of the tutorial */} />
                 </p>
             );
         } else {
             return (
                 <p>
-                    Excellent! Captured stones are taken as <i>&ldquo;prisoners&rdquo;</i> and are removed from the board.
+                    <Markdown source={_("Excellent! Captured stones are taken as <i>&ldquo;prisoners&rdquo;</i> and are removed from the board.") /* translators: This is part of the tutorial */} />
                 </p>
            );
         }
@@ -213,8 +214,8 @@ class CapturingStones1 extends TutorialPage { /* {{{ */
     showNext() {
         return this.refs.igoban.goban.engine.board[4][4] !== 2;
     }
-} /* }}} */
-class CapturingStones2 extends TutorialPage { /* {{{ */
+}
+class CapturingStones2 extends TutorialPage {
     constructor(props) {
         super(props);
     }
@@ -224,14 +225,13 @@ class CapturingStones2 extends TutorialPage { /* {{{ */
         if (!this.state.show_next) {
             return (
                 <p>
-                    Groups of stones can be captured all at once if the entire group is
-                    surrounded. Capture the white group.
+                    {_("Groups of stones can be captured all at once if the entire group is surrounded. Capture the white group.") /* translators: This is part of the tutorial */}
                 </p>
             );
         } else {
             return (
                 <p>
-                    Well done!
+                    {_("Well done!") /* translators: This is a congratulation message in the tutorial after the player has succeeded in capturing a group */}
                 </p>
            );
         }
@@ -247,8 +247,8 @@ class CapturingStones2 extends TutorialPage { /* {{{ */
     showNext() {
         return this.refs.igoban.goban.engine.board[4][4] !== 2;
     }
-} /* }}} */
-class CapturingStones3 extends TutorialPage { /* {{{ */
+}
+class CapturingStones3 extends TutorialPage {
     constructor(props) {
         super(props);
     }
@@ -258,14 +258,13 @@ class CapturingStones3 extends TutorialPage { /* {{{ */
         if (!this.state.show_next) {
             return (
                 <p>
-                    Stones along the edge of the board only need to be surrounded by space
-                    on the board. Capture the white group
+                    {_("Stones along the edge of the board only need to be surrounded by space on the board. Capture the white group") /* translators: This is part of the tutorial */}
                 </p>
             );
         } else {
             return (
                 <p>
-                    Great!
+                    {_("Great!") /* translators: This is a congratulation message in the tutorial after the player has succeeded in capturing a group */}
                 </p>
            );
         }
@@ -282,8 +281,8 @@ class CapturingStones3 extends TutorialPage { /* {{{ */
     showNext() {
         return this.refs.igoban.goban.engine.board[4][0] !== 2;
     }
-} /* }}} */
-class CapturingStones4 extends TutorialPage { /* {{{ */
+}
+class CapturingStones4 extends TutorialPage {
     constructor(props) {
         super(props);
     }
@@ -293,14 +292,13 @@ class CapturingStones4 extends TutorialPage { /* {{{ */
         if (!this.state.show_next) {
             return (
                 <p>
-                    Simply surrounding a group on the outside isn't enough to capture a group, all <i>&ldquo;liberties&rdquo;</i> (empty spaces next to the group)
-                    must also be filled in. Capture white by placing a stone at <span className='coordinate'>E5</span>
+                    <Markdown source={_("Simply surrounding a group on the outside isn't enough to capture a group, all <i>&ldquo;liberties&rdquo;</i> (empty spaces next to the group) must also be filled in. Capture white by placing a stone at <span class='coordinate'>E5</span>") /* translators: This is part of the tutorial */} />
                 </p>
             );
         } else {
             return (
                 <p>
-                    Very good!
+                    {_("Very good!") /* translators: This is a congratulation message in the tutorial after the player has succeeded in capturing a group */}
                 </p>
            );
         }
@@ -316,9 +314,9 @@ class CapturingStones4 extends TutorialPage { /* {{{ */
     showNext() {
         return this.refs.igoban.goban.engine.board[4][3] !== 2;
     }
-} /* }}} */
+}
 
-class StayingAlive1 extends TutorialPage { /* {{{ */
+class StayingAlive1 extends TutorialPage {
     constructor(props) {
         super(props);
     }
@@ -327,8 +325,7 @@ class StayingAlive1 extends TutorialPage { /* {{{ */
     text() {
         return (
             <p>
-                A group is only ever truly safe if it has at least two <i>&ldquo;eyes&rdquo;</i>. For example,
-                it is impossible to capture white here (unless white foolishly fills in one of the eyes!)
+                <Markdown source={_("A group is only ever truly safe if it has at least two <i>&ldquo;eyes&rdquo;</i>. For example, it is impossible to capture white here (unless white foolishly fills in one of the eyes!)") /* translators: This is part of the tutorial */} />
             </p>
         );
     }
@@ -343,8 +340,8 @@ class StayingAlive1 extends TutorialPage { /* {{{ */
     showNext() {
         return true;
     }
-} /* }}} */
-class StayingAlive2 extends TutorialPage { /* {{{ */
+}
+class StayingAlive2 extends TutorialPage {
     constructor(props) {
         super(props);
         this.state = {
@@ -358,19 +355,19 @@ class StayingAlive2 extends TutorialPage { /* {{{ */
         if (!this.state.show_next && !this.state.show_reset) {
             return (
                 <p>
-                    To protect your group from capture, form two eyes for black.
+                    {_("To protect your group from capture, form two eyes for black.") /* translators: This is part of the tutorial */}
                 </p>
             );
         } else if (this.state.show_next) {
             return (
                 <p>
-                    Very good! Now there is nothing that white can do to capture black.
+                    {_("Very good! Now there is nothing that white can do to capture black.") /* translators: This is part of the tutorial */}
                 </p>
             );
         } else {
             return (
                 <p>
-                    Oops! Without forming two eyes, white can capture black!
+                    {_("Oops! Without forming two eyes, white can capture black!") /* translators: This is part of the tutorial */}
                 </p>
            );
         }
@@ -387,11 +384,9 @@ class StayingAlive2 extends TutorialPage { /* {{{ */
 
             "initial_player": "black",
             "onCorrectAnswer": () => {
-                console.log("Yay correct");
                 this.setState({show_next: true});
             },
             "onWrongAnswer": () => {
-                console.log("Boo wrong ");
                 this.setState({show_reset: true});
             },
             "move_tree": {
@@ -411,8 +406,8 @@ class StayingAlive2 extends TutorialPage { /* {{{ */
     showReset() {
         return this.state.show_reset;
     }
-} /* }}} */
-class Ko extends TutorialPage { /* {{{ */
+}
+class Ko extends TutorialPage {
     constructor(props) {
         super(props);
         this.state = {
@@ -426,30 +421,13 @@ class Ko extends TutorialPage { /* {{{ */
         if (!this.state.show_next) {
             return (
                 <p>
-                    Just a couple more things to know and you'll be ready to start playing.
-                    <br/>
-                    <br/>
-
-                    There is a special rule called the <i>Ko</i> rule which prevents endless loops of capturing
-                    each others stones. The rule is simple, you can't loop. If black were to
-                    take <span className='coordinate'>E4</span> by placing a stone at <span className='coordinate'>E3</span>, white cannot
-                    play at <span className='coordinate'>E4</span> right away, instead white must play somewhere else. If
-                    black does not fill the hole at <span className='coordinate'>E4</span>, then next turn white may then
-                    place at <span className='coordinate'>E4</span> (and then black must play somewhere other than <span className='coordinate'>E3</span>).
-                    <br/>
-                    <br/>
-                    Try taking <span className='coordinate'>E4</span> then immediately retaking the stone now.
+                    <Markdown source={_("Just a couple more things to know and you'll be ready to start playing.  <br/><br/>  There is a special rule called the <i>Ko</i> rule which prevents endless loops of capturing each others stones. The rule is simple, you can't loop. If black were to take <span class='coordinate'>E4</span> by placing a stone at <span class='coordinate'>E3</span>, white cannot play at <span class='coordinate'>E4</span> right away, instead white must play somewhere else. If black does not fill the hole at <span class='coordinate'>E4</span>, then next turn white may then place at <span class='coordinate'>E4</span> (and then black must play somewhere other than <span class='coordinate'>E3</span>).   <br/><br/>  Try taking <span class='coordinate'>E4</span> then immediately retaking the stone now.") /* translators: This is part of the tutorial */} />
                 </p>
             );
         } else {
             return (
                 <p>
-                    Good.
-                    <br/>
-                    <br/>
-                    You'll notice you can't endlessly retake stones, the other player must play somewhere else,
-                    however the next time it is their turn they may retake the stone if it is still available.
-                    This is commonly known as a <i>Ko threat</i> and clever players can use them to their advantage.
+                    <Markdown source={_("Good.  <br/><br/>  You'll notice you can't endlessly retake stones, the other player must play somewhere else, however the next time it is their turn they may retake the stone if it is still available.  This is commonly known as a <i>Ko threat</i> and clever players can use them to their advantage.") /* translators: This is part of the tutorial */} />
                 </p>
            );
         }
@@ -462,7 +440,6 @@ class Ko extends TutorialPage { /* {{{ */
             },
             'moves': 'eeef',
             'onError': () => {
-                console.log("Error");
                 /* we want the user to hit the 'Illegal Ko Move' error */
                 this.setState({show_next: true});
             }
@@ -474,8 +451,8 @@ class Ko extends TutorialPage { /* {{{ */
     showReset() {
         return this.state.show_reset;
     }
-} /* }}} */
-class Snapback extends TutorialPage { /* {{{ */
+}
+class Snapback extends TutorialPage {
     constructor(props) {
         super(props);
     }
@@ -485,17 +462,13 @@ class Snapback extends TutorialPage { /* {{{ */
         if (!this.state.show_next) {
             return (
                 <p>
-                    Note that the <i>Ko</i> rule only applies to situations where the board would repeat.
-                    In the following setup, if black were to play at <span className='coordinate'>F4</span>,
-                    white could immediately capture the stone by playing at  <span className='coordinate'>F3</span>,
-                    but then black can immediately recapture the three stones by placing at  <span className='coordinate'>F4</span> again!
-                    (This is known as a <i>snapback</i>). Try this now.
+                    <Markdown source={_("Note that the <i>Ko</i> rule only applies to situations where the board would repeat.  In the following setup, if black were to play at <span class='coordinate'>F4</span>, white could immediately capture the stone by playing at  <span class='coordinate'>F3</span>, but then black can immediately recapture the three stones by placing at  <span class='coordinate'>F4</span> again!  (This is known as a <i>snapback</i>). Try this now.") /* translators: This is part of the tutorial */} />
                 </p>
             );
         } else {
             return (
                 <p>
-                    Great, we're almost done! Next we'll learn about finishing the game and scoring.
+                    {_("Great, we're almost done! Next we'll learn about finishing the game and scoring.") /* translators: This is part of the tutorial */}
                 </p>
            );
         }
@@ -511,8 +484,8 @@ class Snapback extends TutorialPage { /* {{{ */
     showNext() {
         return this.refs.igoban.goban.engine.board[5][4] === 0 && this.refs.igoban.goban.engine.board[5][5] === 1;
     }
-} /* }}} */
-class Scoring1 extends TutorialPage { /* {{{ */
+}
+class Scoring1 extends TutorialPage {
     constructor(props) {
         super(props);
     }
@@ -521,11 +494,7 @@ class Scoring1 extends TutorialPage { /* {{{ */
     text() {
         return (
             <p>
-                When a player believes they have no where left to play meaningful moves, they pass. When both
-                players pass consecutively then the game is over and the winner is determined by counting up
-                all of the <i>territory</i> each player has and adding this to the number of prisoners they've
-                captured. The player who played White (who goes second) gets a special bonus called <i>Komi</i>,
-                which is usually 6.5 points. (Note, by using .5 points, there can never be a tie in Go!).
+                <Markdown source={_("When a player believes they have no where left to play meaningful moves, they pass. When both players pass consecutively then the game is over and the winner is determined by counting up all of the <i>territory</i> each player has and adding this to the number of prisoners they've captured. The player who played White (who goes second) gets a special bonus called <i>Komi</i>, which is usually 6.5 points. (Note, by using .5 points, there can never be a tie in Go!).") /* translators: This is part of the tutorial */} />
             </p>
         );
     }
@@ -540,8 +509,8 @@ class Scoring1 extends TutorialPage { /* {{{ */
             },
         };
     }
-} /* }}} */
-class Scoring2 extends TutorialPage { /* {{{ */
+}
+class Scoring2 extends TutorialPage {
     constructor(props) {
         super(props);
         this.state = {
@@ -557,21 +526,20 @@ class Scoring2 extends TutorialPage { /* {{{ */
         if (!this.state.show_next && !this.state.show_reset) {
             return (
                 <p>
-                    When scoring, territory needs to be <i>completely surrounded</i> before it can be scored.
-                    Place the missing stone so that black can claim the territory in the upper right corner.
+                    <Markdown source={_("When scoring, territory needs to be <i>completely surrounded</i> before it can be scored.  Place the missing stone so that black can claim the territory in the upper right corner.") /* translators: This is part of the tutorial */} />
                 </p>
             );
         }
         else if (this.state.show_next) {
             return (
                 <p>
-                    Excellent!
+                    {_("Excellent!") /* translators: This is a congratulation message in the tutorial after the player has succeeded in sealing territory */}
                 </p>
             );
         } else {
             return (
                 <p>
-                    Oops! Try again.
+                    {_("Oops! Try again.!") /* translators: This is a failure message in the tutorial after the player didn't place a correct stone while trying to seal some territory */}
                 </p>
            );
         }
@@ -611,9 +579,9 @@ class Scoring2 extends TutorialPage { /* {{{ */
     showReset() {
         return this.state.show_reset;
     }
-} /* }}} */
+}
 
-class Done extends React.PureComponent<{}, any> { /* {{{ */
+class Done extends React.PureComponent<{}, any> {
     constructor(props) {
         super(props);
     }
@@ -623,11 +591,47 @@ class Done extends React.PureComponent<{}, any> { /* {{{ */
     }
 
     render() {
+
+        let iwtg_link = 'http://www.playgo.to/iwtg/';
+        let iwtg_links = {
+            'en': 'http://www.playgo.to/iwtg/en/',
+            'ru': 'http://www.playgo.to/iwtg/russian/',
+            'zh-cn': 'http://www.playgo.to/iwtg/cn_simple',
+            'de': 'http://www.playgo.to/iwtg/german',
+
+            "ar": "http://www.playgo.to/iwtg/arabic",
+            "cs": "http://www.oglop.wz.cz/",
+            "da": null,
+            "eo": "http://www.playgo.to/iwtg/esperanto",
+            "es": "http://www.thinkchile.com/playgo",
+            "fi": "http://www.playgo.to/iwtg/finnish",
+            "fr": "http://jeudego.org/_php/_mori/mori.php",
+            "he": "http://www.playgo.to/iwtg/hebrew",
+            "it": null,
+            "ja": "http://www.playgo.to/iwtg/jp",
+            "ko": null,
+            "nl": null,
+            "pl": "http://go.art.pl/Polish",
+            "pt": "http://go.alamino.net/playgoto/",
+            "ro": "http://arad.goclub.ro/tutorial/",
+            "sr": null,
+            "sv": "http://www.playgo.to/iwtg/swedish",
+            "uk": "http://ufgo.org/IGoTutor/index-e.html",
+        };
+
+        try {
+            if (ogs_current_language in iwtg_links && iwtg_links[ogs_current_language]) {
+                iwtg_link = iwtg_links[ogs_current_language];
+            }
+        } catch (e) {
+            console.error(e);
+        }
+
         return (
             <div className='Tutorial'>
                 <div className='TutorialPage Done'>
                     <p>
-                        Congratulations, you now know how to play Go! From here, explore, enjoy, and welcome!
+                        {_("Congratulations, you now know how to play Go! From here, explore, enjoy, and welcome!") /* translators: This is the final congratulation message in the tutorial */}
                     </p>
 
                     <div >
@@ -635,18 +639,18 @@ class Done extends React.PureComponent<{}, any> { /* {{{ */
 
                         <div className='row'>
                             <div className='col-sm-6'>
-                                <button className='primary' onClick={this.playComputer}><i className='fa fa-laptop'></i> Play a game!</button>
+                                <button className='primary' onClick={this.playComputer}><i className='fa fa-laptop'></i> {_("Play a game!")}</button>
                             </div>
                             <div className='col-sm-6'>
-                                <a className='btn primary' href='http://www.playgo.to/iwtg/en/'><i className='fa fa-graduation-cap'></i> Basic strategies</a>
+                                <a className='btn primary' href={iwtg_link} target='_blank'><i className='fa fa-graduation-cap'></i> {_("Basic strategies") /* translators: This is a link to http://www.playgo.to/iwtg/ seen after the tutorial is complete */} </a>
                             </div>
                         </div>
                         <div className='row'>
                             <div className='col-sm-6'>
-                                <a className='btn primary' href='https://forums.online-go.com'><i className='fa fa-th-list'></i> Visit the forums</a>
+                                <a className='btn primary' href='https://forums.online-go.com' target='_blank'><i className='fa fa-th-list'></i> {_("Visit the forums")}</a>
                             </div>
                             <div className='col-sm-6'>
-                                <Link className='btn primary' to='/chat'><i className='fa fa-comments'></i> Head over to chat</Link>
+                                <Link className='btn primary' to='/chat'><i className='fa fa-comments'></i> {_("Head over to chat")}</Link>
                             </div>
                         </div>
                     </div>
@@ -654,4 +658,4 @@ class Done extends React.PureComponent<{}, any> { /* {{{ */
             </div>
         );
     }
-} /* }}} */
+}

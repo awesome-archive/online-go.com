@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2012-2017  Online-Go.com
+ * Copyright (C) 2012-2020  Online-Go.com
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU Affero General Public License as
@@ -16,10 +16,11 @@
  */
 
 import * as React from "react";
-import {Link} from "react-router";
+import {Link} from "react-router-dom";
 import {post} from "requests";
 import {_, pgettext, interpolate} from "translate";
-import data from "data";
+import * as data from "data";
+import { parse } from 'query-string';
 
 declare var swal;
 
@@ -38,9 +39,11 @@ export class VerifyEmail extends React.PureComponent<VerifyEmailProps, any> {
     }
 
     componentDidMount() {
-        post('me/validateEmail', {
-            id: this.props.location.query.id,
-            verification: this.props.location.query.v,
+        let q = parse(this.props.location.search);
+
+        post("me/validateEmail", {
+            id: q['id'],
+            verification: q['v'],
         })
         .then(() => {
             this.setState({verifying: false, message: _("Great, your email address has been verified!")});

@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2012-2017  Online-Go.com
+ * Copyright (C) 2012-2020  Online-Go.com
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU Affero General Public License as
@@ -20,9 +20,41 @@
     position: absolute;
     top: below-navbar;
     bottom: 0;
+    bottom: constant(safe-area-inset-bottom);
+    bottom: env(safe-area-inset-bottom);
     right: 0;
     left: 0;
 }
+
+.outer-banner {
+    .Game, .Dock {
+        top: below-navbar + 5.4 !important;
+    }
+}
+
+.mobile-banner {
+    .Game, .Dock {
+        top: below-navbar + 2.9 !important;
+    }
+}
+
+/*
+@media (max-width: 728px) {
+    .outer-banner {
+        .Game, .Dock {
+            top: below-navbar + 2.9 !important;
+        }
+    }
+
+    .mobile-banner {
+        .Game, .Dock {
+            top: below-navbar + 2.9 !important;
+        }
+    }
+}
+*/
+
+
 
 
 .Game.portrait.squashed {
@@ -51,7 +83,7 @@ goban-view-bar-width=400px
 
     // .players is handled in Players.styl
 
-    .play-controls { /* {{{ */
+    .play-controls {
         flex-grow: 0;
         flex-shrink: 0;
         display: block;
@@ -75,11 +107,33 @@ goban-view-bar-width=400px
             text-align: center;
         }
 
+        .annulled-indicator {
+            color: red;
+            text-align: center;
+        }
+
         .game-action-buttons {
             position: relative;
             text-align: center;
         }
 
+        .analyze-mode-buttons {
+            display: flex;
+            flex-direction: column;
+            justify-content: space-around;
+            align-items: center;
+
+            margin-top: 5px;
+            margin-bottom: 5px;
+            button {
+                themed background-color success
+                themed-darken border-color success border-darken-amount
+            }
+            button:hover {
+                themed-lighten background-color success button-highlight-brighten-amount
+                themed-darken border-color success button-border-highlight-darken-amount
+            }
+        }
         .pause-controls {
             text-align: center;
         }
@@ -133,12 +187,11 @@ goban-view-bar-width=400px
         flex-grow: 1;
         flex-basis: 95%;
     }
-    
+
     .center-col {
         .play-controls {
             flex-grow: 0;
             padding-top: 0;
-            //height: 100%;
         }
     }
 
@@ -149,9 +202,9 @@ goban-view-bar-width=400px
             //justify-content: center;
         }
     }
-    /* }}} */
 
-    .conditional-move-planner { /* {{{ */
+
+    .conditional-move-planner {
         text-align: center;
         .buttons {
             display: flex;
@@ -159,13 +212,14 @@ goban-view-bar-width=400px
         }
     }
 
-    /* }}} */
 
-    .game-analyze-button-bar { /* {{{ */
+
+    .game-analyze-button-bar {
         display: flex;
         align-items: center;
         justify-content: center;
         flex-wrap: wrap;
+        user-select: none;
 
         .stone-button {
             line-height: 2rem;
@@ -185,9 +239,9 @@ goban-view-bar-width=400px
 
     }
 
-    /* }}} */
 
-    .chat-container { /* {{{ */
+
+    .chat-container {
         flex-shrink: 1;
         flex-grow: 1;
     }
@@ -208,18 +262,10 @@ goban-view-bar-width=400px
 
     /* }}}*/
 
-    .ad-container { /* {{{ */
-        flex-grow: 0;
-        flex-shrink: 0;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-
-        .ad {
-            display: flex;
-            align-items: center;
-            justify-content: center;
-        }
+    input.volume-slider {
+        width: 8rem;
+        max-width: 70%;
+        display: inline-block;
     }
 
     .right-col {
@@ -243,12 +289,10 @@ goban-view-bar-width=400px
         }
     }
 
-    /* }}} */
 
-    .goban-container { /* {{{ */
+
+    .goban-container {
         flex-grow: 1;
-        //flex-shrink: 1;
-        flex-basis: 100%;
         display: flex;
         align-items: center;
         justify-content: center;
@@ -258,9 +302,9 @@ goban-view-bar-width=400px
             top: 0;
             left: 0;
         }
-    } /* }}} */
+    }
 
-    .action-bar { /* {{{ */
+    .action-bar {
         display: flex;
         min-height: 2rem;
         //justify-content: space-between;
@@ -275,6 +319,7 @@ goban-view-bar-width=400px
             white-space: nowrap;
         }
         .move-number {
+            flex-basis: 1rem;
             text-align: right;
         }
 
@@ -287,9 +332,9 @@ goban-view-bar-width=400px
         }
 
         .controls {
-            flex-shrink: 0;
+            flex-shrink: 1;
             flex-grow: 1;
-            flex-basis: 50%;
+            flex-basis: 30rem;
             display: flex;
 
             .move-control {
@@ -307,14 +352,14 @@ goban-view-bar-width=400px
 
     &.portrait .action-bar {
         .icons {
-            padding-left: 1.0rem;
+            //padding-left: 1.0rem;
         }
         .move-number {
         }
     }
-    /* }}} */
 
-    .tab-icon { /* {{{ */
+
+    .tab-icon {
         position: fixed;
         right: 0;
         bottom: 0;
@@ -327,9 +372,9 @@ goban-view-bar-width=400px
     .tab-icon:hover {
         themed color fg
     }
-    /* }}} */
 
-    .leave-zen-mode-button { /* {{{ */
+
+    .leave-zen-mode-button {
         display: none;
         position: fixed;
         top: 0.5rem;
@@ -343,25 +388,14 @@ goban-view-bar-width=400px
         themed color fg
     }
 
-    &.zen {
-        themed background-color bg 
-        .left-col, .right-col {
-            display: none;
-        }
-
-        .leave-zen-mode-button {
-            display: inline-block;
-        }
-    } /* }}} */
-
-    .center-col { /* {{{ */
+    .center-col {
         flex-grow: 1;
         flex-shrink: 1;
         flex-basis: 50%;
         display: flex;
         flex-direction: column;
         align-items: stretch;
-        //justify-content: stretch;
+        width: 100%;
 
         .goban-container {
         }
@@ -369,14 +403,16 @@ goban-view-bar-width=400px
     }
     &.portrait .center-col {
         .cancel-button {
-            position: relative;
+            align-self: center;
             flex-shrink: 0;
+            position: relative;
+            top: 25px;
         }
     }
 
-    /* }}} */
 
-    .left-col, .right-col { /* {{{ */
+
+    .left-col, .right-col {
         display: flex;
         width: goban-view-bar-width
         overflow-y: auto;
@@ -388,29 +424,18 @@ goban-view-bar-width=400px
         justify-content: space-between;
     }
     .left-col {
-        flex-basis: 15%;
+        flex-basis: 0;
         flex-shrink: 1;
         align-content: center;
         justify-content: center;
         padding-right: 0.3rem;
-        min-width: 340px;
+        min-width: 0px;
     }
     .right-col {
         flex-basis: 25%;
         padding-left: 0.3rem;
         padding-right: dock-collapsed-width + 0.3rem;
         min-width: 340px;
-    }
-
-    .left-col.no-ads {
-        flex-basis: 0;
-        min-width: 0px;
-    }
-    .left-col.wide-skyscraper {
-        min-width: 170px;
-    }
-    .left-col.half-page {
-        min-width: 310px;
     }
 
     &.wide {
@@ -443,18 +468,15 @@ goban-view-bar-width=400px
         }
     }
 
-    /* }}} */
 
-    &.portrait { /* .Dock {{{ */
+
+    &.portrait { /* .Dock  */
         .Dock {
             //flex: 1;
             flex-shrink: 0;
             flex-grow: 1;
             @extend .Dock.inline;
             margin-bottom: 3rem;
-            input[type="range"] {
-                max-width: 50%;
-            }
         }
     }
 
@@ -463,86 +485,106 @@ goban-view-bar-width=400px
             flex-shrink: 0;
             flex-grow: 1;
             margin-bottom: 3rem;
-            input[type="range"] {
-                max-width: 50%;
-            }
         }
     }
 
+    &.zen {
+        themed background-color bg
+        .left-col, .right-col {
+			padding: 0px;
+        }
 
+        .leave-zen-mode-button {
+            display: inline-block;
+        }
 
-    /* }}} */
-
-    &.zen { /* {{{ */
-        .action-bar, .chat-container {
+		.Dock, .action-bar {
             display: none;
         }
+		.right-col {
+			.chat-container,
+			.game-analyze-button-bar,
+			#move-tree-container {
+				display: none;
+			}
+			.play-controls {
+				flex-grow: 0;
+                .accept-undo-button {
+                    display: none
+                }
+			}
+			justify-content: center;
+			width: auto;
+			flex-grow: 0;
+            .players {
+                flex-direction: column;
+                .player-container {
+                    width: 100%;
+                }
+            }
+            min-width 170px;
+		}
+		.center-col {
+			.goban-container {
+				flex-grow: 0;
+			}
+            flex-basis: 100vh
+			justify-content: flex-start;
+			flex-grow: 0;
+		}
+        &.portrait {
+            .center-col {
+                flex-basis: 100%
+            }}
+		.align-row-start, .align-col-start {
+			align-self: flex-start;
+		}
+		.align-row-end, .align-col-end {
+			align-self: flex-end;
+		}
+		.align-row-start, .align-row-end {
+			flex-grow: 1;
+		}
     }
-    /* }}} */
+
 
     .review-list {
         text-align: center;
     }
 
+    .return-url {
+        text-align: center;
+        margin: 1rem;
+    }
 
-    #game-move-node-text { /* {{{ */
+    #game-move-node-text {
         width: 100%;
-    } /* }}} */
+    }
 
     .Dock {
         a.disabled {
             themed color shade2
         }
+
+        .unannulable {
+            transform: rotate(-55deg);
+        }
     }
 }
 
 
-
-
-.ad.large-rectangle,
-.ad.medium-rectangle,
-.ad.leaderboard,
-.ad.mobile-banner,
-.ad.wide-skyscraper,
-.ad.half-page
-{
-    display: inline-block;
-    box-sizing: border-box;
-    border: 1px solid #EE5DC4;
+.chat-container {
+    /* Prevent silly Firefox from collapsing empty editable lines */
+    .qc-option[contenteditable=true]{
+        min-height: 1 em;
+    }
 }
-
-.ad.large-rectangle {
-    width: 336px;
-    height: 280px;
-}
-.ad.medium-rectangle {
-    width: 300px;
-    height: 250px;
-}
-.ad.leaderboard{
-    width: 728px;
-    height: 90px;
-}
-.ad.mobile-banner{
-    width: 320px;
-    height: 100px;
-}
-.ad.wide-skyscraper{
-    width: 160px;
-    height: 600px;
-}
-.ad.half-page {
-    width: 300px;
-    height: 600px;
-}
-
-
 
 
 /*****************************/
 /*** Conditional Move tree ***/
 /*****************************/
-/* {{{ */
+
 
 .ctrl-conditional-tree {
     text-align: left;
@@ -571,7 +613,7 @@ goban-view-bar-width=400px
             padding: 0;
             margin-left: 10px;
         }
-        
+
         li {
             margin: 0;
             padding: 0 12px;
@@ -644,5 +686,4 @@ goban-view-bar-width=400px
     }
 }
 
-/* }}} */
 

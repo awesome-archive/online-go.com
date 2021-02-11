@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2012-2017  Online-Go.com
+ * Copyright (C) 2012-2020  Online-Go.com
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU Affero General Public License as
@@ -16,12 +16,13 @@
  */
 
 import * as React from "react";
-import {Link, browserHistory} from "react-router";
-import data from "data";
+import {Link} from "react-router-dom";
+import {browserHistory} from "ogsHistory";
+import * as data from "data";
 import {_, current_language, languages} from "translate";
-import {OGSComponent, PlayerIcon} from "components";
+import {PlayerIcon} from "PlayerIcon";
 import {post, get, abort_requests_in_flight} from "requests";
-import {acceptGroupInvite, acceptTournamentInvite, rejectGroupInvite, rejectTournamentInvite, ignore} from "misc";
+import {acceptGroupInvite, acceptTournamentInvite, rejectGroupInvite, rejectTournamentInvite, ignore, errorLogger} from "misc";
 import {LineText} from "misc-ui";
 import {challenge, createDemoBoard} from "ChallengeModal";
 import {openNewGameModal} from "NewGameModal";
@@ -33,7 +34,10 @@ import {NotificationIndicator, TurnIndicator, NotificationList} from "Notificati
 import {TournamentIndicator} from "Announcements";
 import {FriendIndicator} from "FriendList";
 import {Player} from "Player";
-import player_cache from "player_cache";
+import * as player_cache from "player_cache";
+import * as preferences from "preferences";
+import cached from 'cached';
+import {ChatIndicator} from "Chat";
 
 let body = $(document.body);
 
@@ -64,15 +68,16 @@ function toggleTheme() {
 }
 let setThemeLight = setTheme.bind(null, "light");
 let setThemeDark = setTheme.bind(null, "dark");
-function logout() {
+export function logout() {
     get("/api/v0/logout").then((config) => {
-        data.set("config", config);
-        browserHistory.push("/");
-    });
+        data.set(cached.config, config);
+        window.location.href = '/';
+    })
+    .catch(errorLogger);
 }
 
 
-export class NavBar extends OGSComponent<{}, any> {
+export class NavBar extends React.PureComponent<{}, any> {
     refs: {
         input: any;
         notification_list: NotificationList;
@@ -108,7 +113,7 @@ export class NavBar extends OGSComponent<{}, any> {
         this.toggleDebug = this.toggleDebug.bind(this);
     }
 
-    componentWillMount() {
+    UNSAFE_componentWillMount() {
         data.watch("config.user", (user) => this.setState({"user": user}));
 
         browserHistory.listen(location => {
@@ -274,14 +279,16 @@ export class NavBar extends OGSComponent<{}, any> {
             <section className="left">
                 {(!this.state.user.anonymous || null) && <Link to="/overview">{_("Home")}</Link>}
                 {user && <Link to="/play">{_("Play")}</Link>}
-                <Link to="/observe-games">{_("Watch")}</Link>
+                <Link to="/observe-games">{_("Games")}</Link>
                 <Link to="/chat">{_("Chat")}</Link>
                 <Link to="/puzzles">{_("Puzzles")}</Link>
+                <Link to="/joseki">{_("Joseki")}</Link>
                 <Link to="/tournaments">{_("Tournaments")}</Link>
                 <Link to="/ladders">{_("Ladders")}</Link>
                 <Link to="/groups">{_("Groups")}</Link>
                 <Link to="/leaderboards">{_("Leaderboards")}</Link>
-                <a target="_blank" href="https://forums.online-go.com/">{_("Forums")}</a>
+                <a target="_blank" href="https://forums.online-go.com/" rel="noopener">{_("Forums")}</a>
+                {user && <Link to={`/user/view/${user.id}`}>{_("Profile")}</Link>}
                 {/*
                 <a href='https://ogs.readme.io/'>{_("Help")}</a>
                 */}
@@ -296,7 +303,8 @@ export class NavBar extends OGSComponent<{}, any> {
                 :
                 <section className="right">
                     <IncidentReportTracker />
-                    <TournamentIndicator />
+                    { preferences.get("show-tournament-indicator") && <TournamentIndicator /> }
+                    <ChatIndicator />
                     <FriendIndicator />
                     <TurnIndicator />
                     <span className="icon-container" onClick={this.toggleRightNav}>
@@ -324,6 +332,10 @@ export class NavBar extends OGSComponent<{}, any> {
             {/* Right Nav */}
             {user &&
             <div className={"rightnav " + (this.state.right_nav_active ? "active" : "")}>
+                <div style={{'textAlign': 'right'}}>
+                    <Player user={user}  disable-cache-update />
+                </div>
+
                 <NotificationList ref="notification_list" />
 
                 <LineText>{_("Theme")}</LineText>
@@ -345,7 +357,6 @@ export class NavBar extends OGSComponent<{}, any> {
                 {(show_debug || null) &&
                     <div style={{textAlign: "center"}}>
                         <button className={debug ? "sm info" : "sm"} onClick={this.toggleDebug}>{debug ? "Turn debugging off" : "Turn debugging on"}</button>
-                        <button className={debug ? "sm info" : "sm"} onClick={this.toggleAdOverride}>{data.get("ad-override", false) ? "Turn ads off" : "Turn ads on"}</button>
                     </div>
                 }
             </div>
@@ -354,55 +365,59 @@ export class NavBar extends OGSComponent<{}, any> {
 
             {/* Left Nav */}
             <div className={"leftnav " + (this.state.left_nav_active ? "active" : "")}>
-                <input ref="omnisearch_input" type="text"
-                    className="OmniSearch-input"
-                    value={this.state.omnisearch_string}
-                    onKeyDown={this.onOmnisearchKeyPress} onChange={this.updateOmnisearch} placeholder={_("Search")} />
-
-                {(!omnisearch_searching || null) && /* {{{ */
+                <div className="search-row">
+                    <i className="fa fa-search"/>
+                    <input ref="omnisearch_input" type="text"
+                           className="OmniSearch-input"
+                           value={this.state.omnisearch_string}
+                           onKeyDown={this.onOmnisearchKeyPress} onChange={this.updateOmnisearch} placeholder={_("Search")} />
+                </div>
+                {(!omnisearch_searching || null) &&
                     <ul id="items">
-                        {user && <li><Link to="/overview"><i className="fa fa-home"></i> {_("Home")}</Link></li>}
-                        {anon && <li><Link to="/sign-in"><i className="fa fa-sign-in"></i> {_("Sign In")}</Link></li>}
-                        {user && <li><Link to="/play"><i className="ogs-goban"></i> {_("Play")}</Link></li>}
-                        {user && <li><span className="fakelink" onClick={this.newGame}><i className="fa fa-plus"></i> {_("New Game")}</span></li>}
-                        {user && <li><span className="fakelink" onClick={this.newDemo}><i className="fa fa-plus"></i> {_("Demo Board")}</span></li>}
-                        <li><Link to="/observe-games"><i className="fa fa-eye"></i> {_("Games")}</Link></li>
-                        <li><Link to="/leaderboards"><i className="fa fa-list-ol"></i> {_("Leaderboards")}</Link></li>
-                        <li><Link to="/chat"><i className="fa fa-comment-o"></i> {_("Chat")}</Link></li>
+                        {user && <li><Link to="/overview"><i className="fa fa-home"></i>{_("Home")}</Link></li>}
+                        {anon && <li><Link to="/sign-in"><i className="fa fa-sign-in"></i>{_("Sign In")}</Link></li>}
+                        {user && <li><Link to="/play"><i className="fa ogs-goban"></i>{_("Play")}</Link></li>}
+                        {/* user && <li><span className="fakelink" onClick={this.newGame}><i className="fa fa-plus"></i>{_("New Game")}</span></li> */}
+                        {user && <li><span className="fakelink" onClick={this.newDemo}><i className="fa fa-plus"></i>{_("Demo Board")}</span></li>}
+                        <li><Link to="/observe-games"><i className="fa fa-eye"></i>{_("Games")}</Link></li>
+                        <li><Link to="/leaderboards"><i className="fa fa-list-ol"></i>{_("Leaderboards")}</Link></li>
+                        <li><Link to="/chat"><i className="fa fa-comment-o"></i>{_("Chat")}</Link></li>
                         <li className="divider"></li>
                         {/*
-                        <li ng-if='::global_user'><Link to='/mail'><i className='fa fa-envelope'></i> {_("Mail")}
+                        <li ng-if='::global_user'><Link to='/mail'><i className='fa fa-envelope'></i>{_("Mail")}
                             <ogs-on-ui-push event='mail-update' action='mail_unread_count = data["unread-count"]'></ogs-on-ui-push>
                             <span ng-if='mail_unread_count > 0' style='font-weight: bold; display: inline;'> ({mail_unread_count})</span>
                         </Link></li>
                         */}
 
-                        <li><Link to='/learn-to-play-go'><i className='fa fa-graduation-cap'></i> {_("Learn to play Go")}</Link></li>
-                        <li><Link to="/puzzles"><i className="fa fa-puzzle-piece"></i> {_("Puzzles")}</Link></li>
-                        {/* <li><Link to='/library'><i className='fa fa-university'></i> {_("Server Library")}</Link></li> */}
-                        {user && <li><Link to={`/library/${user.id}`}><i className="fa fa-book"></i> {_("SGF Library")}</Link></li>}
-                        {/* {user && <li><Link to='/library/game-history'><i className='fa fa-archive'></i> {_("Game History")}</Link></li>} */}
+                        <li><Link to="/learn-to-play-go"><i className='fa fa-graduation-cap'></i>{_("Learn to play Go")}</Link></li>
+                        <li><Link to="/puzzles"><i className="fa fa-puzzle-piece"></i>{_("Puzzles")}</Link></li>
+                        <li><Link to="/joseki"><i className="fa fa-sitemap"></i>{_("Joseki")}</Link></li>
+                        {/* <li><Link to='/library'><i className='fa fa-university'></i>{_("Server Library")}</Link></li> */}
+                        {user && <li><Link to={`/library/${user.id}`}><i className="fa fa-book"></i>{_("SGF Library")}</Link></li>}
+                        {/* {user && <li><Link to='/library/game-history'><i className='fa fa-archive'></i>{_("Game History")}</Link></li>} */}
 
                         {/* <li className='divider'></li> */}
 
                         <li><Link to="/tournaments"><i className="fa fa-trophy"></i>{_("Tournaments")}</Link></li>
                         <li><Link to="/ladders"><i className="fa fa-list-ol"></i>{_("Ladders")}</Link></li>
                         <li><Link to="/groups"><i className="fa fa-users"></i>{_("Groups")}</Link></li>
-                        <li><Link to="http://forums.online-go.com/" target="_blank"><i className="fa fa-comments"></i>{_("Forums")}</Link></li>
-                        <li><Link to="/docs/about"><i className="fa fa-question-circle"></i>{_("About")}</Link></li>
+                        <li><a href="http://forums.online-go.com/" target="_blank"><i className="fa fa-comments"></i>{_("Forums")}</a></li>
+                        <li><Link to="/docs/about"><i className="fa fa-info-circle"></i>{_("About")}</Link></li>
+                        <li><a href="https://github.com/online-go/online-go.com/wiki"><i className="fa fa-question-circle"></i>{_("Documentation & FAQ")}</a></li>
                         <li><Link to="/docs/other-go-resources"><i className="fa fa-link"></i>{_("Other Go Resources")}</Link></li>
 
                         {user && <li className="divider"></li>}
-                        {user && <li><Link to={`/user/view/${user.id}`}><i className="fa fa-user"></i> {_("Profile")}</Link></li>}
-                        {user && <li><Link to="/user/settings"><i className="fa fa-gear"></i> {_("Settings")}</Link></li>}
-                        <li><Link to="/user/supporter"><i className="fa fa-star"></i> {_("Support OGS")}</Link></li>
-                        {user && <li><span className="fakelink" onClick={logout}><i className="fa fa-sign-out"></i> {_("Logout")}</span></li>}
+                        <li><Link to="/user/supporter"><i className="fa fa-star"></i>{_("Support OGS")}</Link></li>
+                        {user && <li><Link to={`/user/view/${user.id}`}><i className="fa fa-user"></i>{_("Profile")}</Link></li>}
+                        {user && <li><Link to="/user/settings"><i className="fa fa-gear"></i>{_("Settings")}</Link></li>}
+                        {user && <li><span className="fakelink" onClick={logout}><i className="fa fa-sign-out"></i>{_("Logout")}</span></li>}
 
 
 
-                        {user && user.is_moderator && <li className="divider"></li>}
-                        {user && user.is_moderator && <li><Link className="admin-link" to="/moderator"><i className="fa fa-gavel"></i> {_("Moderator Center")}</Link></li>}
-                        {user && user.is_moderator && <li><Link className="admin-link" to="/announcement-center"><i className="fa fa-bullhorn"></i> {_("Announcement Center")}</Link></li>}
+                        {user && (user.is_moderator || user.is_announcer) && <li className="divider"></li>}
+                        {user && user.is_moderator && <li><Link className="admin-link" to="/moderator"><i className="fa fa-gavel"></i>{_("Moderator Center")}</Link></li>}
+                        {user && (user.is_moderator || user.is_announcer) && <li><Link className="admin-link" to="/announcement-center"><i className="fa fa-bullhorn"></i>{_("Announcement Center")}</Link></li>}
                         {user && user.is_superuser && <li><Link className="admin-link" to="/admin"><i className="fa fa-wrench"></i> Admin</Link></li>}
 
                         {(tournament_invites.length || tournaments.length || false) && <li className="divider"></li>}
@@ -456,8 +471,8 @@ export class NavBar extends OGSComponent<{}, any> {
                             </ul>
                         }
                     </ul>
-                /* }}} */}
-                {(omnisearch_searching || null) && /* {{{ */
+                }
+                {(omnisearch_searching || null) &&
                     <div className="OmniSearch-results">
                         {(this.state.omnisearch_sitemap.length || null) &&
                             <div>
@@ -513,7 +528,7 @@ export class NavBar extends OGSComponent<{}, any> {
                         }
 
                     </div>
-                /* }}} */}
+                }
             </div>
         </div>
         );
@@ -556,7 +571,7 @@ omnisearch_sitemap[_("Changelog")] = [_("Changelog"), "docs/changelog"];
 omnisearch_sitemap[_("About")] = [_("About"), "/docs/about"];
 omnisearch_sitemap[_("Refund Policy")] = [_("Refund Policy"), "/docs/refund-policy"];
 omnisearch_sitemap[_("Terms of Service")] = [_("Terms of Service"), "/docs/terms-of-service"];
-omnisearch_sitemap[_("ToS")] = [_("Terms of Service"), "/docs/terms-of-service"];
+omnisearch_sitemap["ToS"] = [_("Terms of Service"), "/docs/terms-of-service"];
 omnisearch_sitemap[_("Privacy Policy")] = [_("Privacy Policy"), "/docs/privacy-policy"];
 omnisearch_sitemap[_("Contact Information")] = [_("Contact Information"), "/docs/contact-information"];
 omnisearch_sitemap[_("Version")] = [_("Version") + " " + ogs_version];

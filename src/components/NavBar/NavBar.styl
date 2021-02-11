@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2012-2017  Online-Go.com
+ * Copyright (C) 2012-2020  Online-Go.com
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU Affero General Public License as
@@ -19,7 +19,7 @@ navbar-width= 17rem;
 
 #NavBar {
     display: flex;
-    margin-bottom: 0.5rem;
+    margin-bottom: 0.2rem;
     height: navbar-height;
     user-select: none;
     themed background-color navbar-background-color
@@ -95,13 +95,13 @@ navbar-width= 17rem;
                 width: navbar-height;
             }
 
-            img.PlayerIcon{
+            img.PlayerIcon {
                 height: navbar-height;
                 width: navbar-height;
                 pointer-events: none;
             }
 
-            .fa,  {
+            .fa {
                 font-size: 1.0rem;
                 font-weight: 400;
                 margin-left: 0.5rem;
@@ -126,7 +126,7 @@ navbar-width= 17rem;
     .sign-in {
         padding-right: 1.0rem;
     }
-        
+
 
     .nav-menu-modal-backdrop {
         display: none;
@@ -149,17 +149,16 @@ navbar-width= 17rem;
     .rightnav, .leftnav {
         position: absolute;
         top: navbar-height;
-        //bottom: 0;
-        boder: 1px solid transparent;
-        themed boder-color shade2;
         themed background-color navbar-background-color;
         z-index: z.nav-menu.menu;
-        //min-height: 100%;
-        //overflow-y: scroll;
 
         user-select: none;
         width: navbar-width;
         max-width: 100%;
+    }
+
+    .leftnav > #items .fa {
+        margin-right: 4px;
     }
 
     .rightnav {
@@ -211,6 +210,7 @@ navbar-width= 17rem;
             list-style-type: none;
             list-style: none;
             padding: 0;
+            padding-left: 0.75em;
             vertical-align: top;
             width: 100%;
         }
@@ -228,12 +228,37 @@ navbar-width= 17rem;
             }
         }
 
+
+        .search-row {
+            display: flex;
+            align-items: flex-end;
+        }
+
+        .OmniSearch-input {
+            width: (navbar-width - 3rem);
+            margin-right: 1.0rem;
+            margin-top: 1.0rem;
+        }
+
+        .fa-search {
+            themed color shade1;
+            margin-left: 0.8rem;
+            margin-top: 1rem;
+            margin-right: 0.2rem;
+            padding-bottom: 0.35rem;
+
+        }
+
         .fa-check {
             themed color primary;
         }
 
         .fa-times {
             themed color reject;
+        }
+
+        .fa-star {
+            themed color supporter
         }
 
 
@@ -269,6 +294,10 @@ navbar-width= 17rem;
                 themed color fg
             }
         }
+
+        a:hover i {
+            themed color shade0
+        }
     }
 }
 
@@ -298,13 +327,6 @@ body.dark #NavBar button.theme-button.dark {
     i.fa.fa-moon-o {
         color: #fff;
     }
-}
-
-.OmniSearch-input {
-    width: (navbar-width - 2rem);
-    margin-left: 1.0rem;
-    margin-right: 1.0rem;
-    margin-top: 1.0rem;
 }
 
 .OmniSearch-results {

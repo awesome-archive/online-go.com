@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2012-2017  Online-Go.com
+ * Copyright (C) 2012-2020  Online-Go.com
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU Affero General Public License as
@@ -16,17 +16,19 @@
  */
 
 import * as React from "react";
-import {Link, browserHistory} from "react-router";
+import {Link} from "react-router-dom";
+import {browserHistory} from "ogsHistory";
 import * as data from "data";
 import {_} from "translate";
 import {Card} from "material";
 import {LineText} from "misc-ui";
-import {OGSComponent} from "components";
 import {errorAlerter, ignore} from "misc";
-import {post, get} from "requests";
+import {post} from "requests";
+import cached from 'cached';
+import {Md5} from 'ts-md5/dist/md5';
 
+window['Md5'] = Md5;
 declare var swal;
-declare function md5(str: string): string;
 
 export function get_ebi() {
     let bid = data.get("bid") || `${Math.random()}`.split(".")[1];
@@ -37,13 +39,17 @@ export function get_ebi() {
     let screen_dims = "0.0.0.0";
     let tzoffset = "0";
     try {
-        tzoffset = `${(new Date().getTimezoneOffset() + 13)}`;
-        user_agent_hash = md5(navigator.userAgent);
+        tzoffset = `${new Date().getTimezoneOffset() + 13}`;
+        user_agent_hash = Md5.hashStr(navigator.userAgent) as string;
         screen_dims =
-            ((window.screen.width || 0) * 37 + 1) + "." +
-            ((window.screen.height || 0) * 17 + 3) + "." +
-            ((/*window.screen.availLeft||*/0) * 7 + 5) + "." +
-            ((/*window.screen.availTop||*/0) * 117 + 7);
+            (window.screen.width || 0) * 37 +
+            1 +
+            "." +
+            ((window.screen.height || 0) * 17 + 3) +
+            "." +
+            /*window.screen.availLeft||*/ (0 * 7 + 5) +
+            "." +
+            /*window.screen.availTop||*/ (0 * 117 + 7);
         let plugin_string = "";
         try {
             for (let i = 0; i < navigator.plugins.length; ++i) {
@@ -55,15 +61,15 @@ export function get_ebi() {
             console.error(e);
         }
         if (plugin_string !== "") {
-            plugin_hash = md5(plugin_string);
+            plugin_hash = Md5.hashStr(plugin_string) as string;
         }
     } catch (e) {
         console.error(e);
     }
-    return bid + "." + screen_dims + "." + plugin_hash + "." + user_agent_hash + "." +   tzoffset;
+    return bid + "." + screen_dims + "." + plugin_hash + "." + user_agent_hash + "." + tzoffset;
 }
 
-export class SignIn extends OGSComponent<{}, any> {
+export class SignIn extends React.PureComponent<{}, any> {
     refs: {
         username: any;
         password: any;
@@ -71,14 +77,12 @@ export class SignIn extends OGSComponent<{}, any> {
 
     constructor(props) {
         super(props);
-        this.state = { };
+        this.state = {};
         this.login = this.login.bind(this);
     }
 
     login(event) {
         let actually_login = () => {
-            console.log("Should be logging in");
-
             post("/api/v0/login", {
                 "username": this.refs.username.value.trim(),
                 "password": this.refs.password.value,
@@ -89,9 +93,7 @@ export class SignIn extends OGSComponent<{}, any> {
                     return;
                 }
 
-                data.set("config", config);
-                console.log("Logged in!");
-                console.info(config);
+                data.set(cached.config, config);
                 if (window.location.hash && window.location.hash[1] === "/") {
                     window.location.pathname = window.location.hash.substr(1);
                 } else {
@@ -130,7 +132,6 @@ export class SignIn extends OGSComponent<{}, any> {
             }
         }
 
-
         if (event.type === "click" || event.charCode === 13) {
             return false;
         }
@@ -140,69 +141,61 @@ export class SignIn extends OGSComponent<{}, any> {
         swal({
             text: _("What is your username?"),
             input: "text",
-            showCancelButton: true,
+            showCancelButton: true
         })
-        .then((username) => {
-            post("/api/v0/reset", {username: username})
-            .then((res) => {
-                if (res.success) {
-                    swal(_("An email with your new password has been emailed to you."));
-                } else {
-                    console.error(res);
-                    errorAlerter(res);
-                }
+            .then((username) => {
+                post("/api/v0/reset", {username: username})
+                    .then((res) => {
+                        if (res.success) {
+                            swal(_("An email with your new password has been emailed to you."));
+                        } else {
+                            console.error(res);
+                            errorAlerter(res);
+                        }
+                    })
+                    .catch(errorAlerter);
             })
-            .catch((err) => {
-                swal(err.responseText);
-            });
-        })
-        .catch(ignore);
+            .catch(ignore);
     }
 
     render() {
         return (
-        <div id="SignIn">
-          <div>
-            <Card>
-            <h2>{_("Sign in")}</h2>
-                <form name="login" autoComplete="on">
-                    <input className="boxed" autoFocus ref="username" name="username" onKeyPress={this.login} placeholder={_("Username") /* translators: Provide username to sign in with */} />
-                    <input className="boxed" ref="password" type="password" name="password" onKeyPress={this.login} placeholder={_("Password") /* translators: Provide password to sign in with */} />
-                    <div style={{textAlign: "right", marginBottom: "1.0rem"}}>
-                        <button className="primary" onClick={this.login}>
-                            <i className="fa fa-sign-in"/> {_("Sign in")}
-                        </button>
-                    </div>
-                </form>
-
-                <div className="social-buttons">
-                    <LineText>{
-                        _("or sign in with") /* translators: username or password, or sign in with social authentication */
-                    }</LineText>
-                    <a className="zocial google icon"
-                        href="/login/google-oauth2/" target="_self">Google</a>
-                    <a className="zocial facebook icon"
-                        href="/login/facebook/" target="_self">Facebook</a>
-                    <a className="zocial twitter icon"
-                        href="/login/twitter/" target="_self">Twitter</a>
-                </div>
-            </Card>
-
-            <div className="registration">
-                <h3>{_("New to Online-Go?")} </h3>
+            <div id="SignIn">
                 <div>
-                <Link to="/register" className="btn primary">
-                <b>{_("Register here!")/* translators: register for an account */}</b></Link>
+                    <Card>
+                        <h2>{_("Sign in")}</h2>
+                        <form name="login" autoComplete="on">
+                            <label htmlFor="username">{_("Username") /* translators: Provide username to sign in with */}</label>
+                            <input className="boxed" id="username" autoFocus ref="username" name="username" onKeyPress={this.login} />
+                            <label htmlFor="password">{_("Password") /* translators: Provide password to sign in with */}</label>
+                            <input className="boxed" id="password" ref="password" type="password" name="password" onKeyPress={this.login} />
+                            <div className="form-actions">
+                                <a onClick={this.resetPassword}>{_("Forgot password?")}</a>
+                                <button className="primary" onClick={this.login}>
+                                    <i className="fa fa-sign-in" /> {_("Sign in")}
+                                </button>
+                            </div>
+                        </form>
+
+                        <div className="social-buttons">
+                            <LineText>{
+                                _("or log in using another account:") /* translators: username or password, or sign in with social authentication */
+                            }</LineText>
+                            <a href="/login/google-oauth2/" className="s btn md-icon" target="_self"><span className="google google-icon" /> {_("Login with Google")}</a>
+                            <a href="/login/facebook/" className="s btn md-icon" target="_self"><span className="facebook facebook-icon" /> {_("Login with Facebook")}</a>
+                            <a href="/login/twitter/" className="s btn md-icon" target="_self"><i className="twitter twitter-icon fa fa-twitter" />{_("Login with Twitter")}</a>
+                        </div>
+                    </Card>
+
+                    <div className="registration">
+                        <h3>{_("New to Online-Go?")} </h3>
+                        <div>
+                            <Link to="/register" className="btn primary">
+                                <b>{_("Register here!")/* translators: register for an account */}</b></Link>
+                        </div>
+                    </div>
                 </div>
             </div>
-
-            <hr/>
-
-            <div className="registration">
-                {_("Forgot your password?")} <button className="sm" onClick={this.resetPassword} >{_("Click here!")}</button>
-            </div>
-          </div>
-        </div>
         );
     }
 }

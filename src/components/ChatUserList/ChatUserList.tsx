@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2012-2017  Online-Go.com
+ * Copyright (C) 2012-2020  Online-Go.com
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU Affero General Public License as
@@ -20,13 +20,12 @@ import {_, pgettext, interpolate} from "translate";
 import {post, get} from "requests";
 import {errorAlerter} from "misc";
 import {chat_manager, ChatChannelProxy} from "chat_manager";
-import preferences from "preferences";
+import * as preferences from "preferences";
 import {Player} from "Player";
-import {GameChat} from "Game";
+import {GameChat} from "Game/Chat";
 
 interface ChatUserListProperties {
     channel: string;
-    display_name?: string;
 }
 
 interface ChatUserCountProperties extends ChatUserListProperties {
@@ -41,13 +40,13 @@ export class ChatUsers<T extends ChatUserListProperties> extends React.PureCompo
         super(props);
         this.state = {tick: 0};
     }
-    componentWillMount() {
-        this.init(this.props.channel, this.props.display_name);
+    UNSAFE_componentWillMount() {
+        this.init(this.props.channel);
     }
-    componentWillReceiveProps(next_props) {
+    UNSAFE_componentWillReceiveProps(next_props) {
         if (this.props.channel !== next_props.channel) {
             this.deinit();
-            this.init(next_props.channel, next_props.display_name);
+            this.init(next_props.channel);
         }
     }
     //componentDidUpdate(old_props, old_state) { }
@@ -55,8 +54,8 @@ export class ChatUsers<T extends ChatUserListProperties> extends React.PureCompo
         this.deinit();
     }
 
-    init(channel, display_name) {
-        this.proxy = chat_manager.join(channel, display_name);
+    init(channel) {
+        this.proxy = chat_manager.join(channel);
         this.proxy.on("join", () => this.setState({tick: this.state.tick + 1}));
         this.proxy.on("part", () => this.setState({tick: this.state.tick + 1}));
     }
@@ -69,14 +68,14 @@ export class ChatUsers<T extends ChatUserListProperties> extends React.PureCompo
 export class ChatUserList extends ChatUsers<ChatUserListProperties> {
     constructor(props) {
         super(props);
-        this.state.user_sort_order = preferences.get("chat.user-sort-order");
+        (this.state as any).user_sort_order = preferences.get("chat.user-sort-order");
     }
 
-    toggleSortOrder = () => {{{
+    toggleSortOrder = () => {
         let new_sort_order = preferences.get("chat.user-sort-order") === "rank" ? "alpha" : "rank";
         preferences.set("chat.user-sort-order", new_sort_order);
         this.setState({"user_sort_order": new_sort_order});
-    }}}
+    }
 
 
     render() {

@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2012-2017  Online-Go.com
+ * Copyright (C) 2012-2020  Online-Go.com
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU Affero General Public License as
@@ -18,8 +18,8 @@
 import * as React from "react";
 import {_, pgettext, interpolate} from "translate";
 import {post, get} from "requests";
-import {OGSComponent} from "components";
-import data from "data";
+import {deepCompare} from "misc";
+import * as data from "data";
 
 interface PaginatedTableColumnProperties {
     cellProps?: any;
@@ -28,7 +28,8 @@ interface PaginatedTableColumnProperties {
     headerProps?: any;
     sortable?: boolean;
     striped?: boolean;
-    className: ((row) => string) | string;
+    className?: ((row) => string) | string;
+    orderBy?: Array<string>;
 }
 
 type SourceFunction = (filter: any, sorting: Array<string>) => Promise<any>;
@@ -45,7 +46,7 @@ interface PaginatedTableProperties {
     filter?: any;
     orderBy?: Array<string>;
     groom?: ((data: Array<any>) => Array<any>);
-    onRowClick?: (row) => any;
+    onRowClick?: (row, ev) => any;
     debug?: boolean;
     pageSizeOptions?: Array<number>;
     startingPage?: number;
@@ -56,7 +57,7 @@ interface PaginatedTableProperties {
     // callback?: ()=>any,
 }
 
-export class PaginatedTable extends OGSComponent<PaginatedTableProperties, any> {
+export class PaginatedTable extends React.Component<PaginatedTableProperties, any> {
     filter: any = {};
     sorting: Array<string> = [];
     source_url: string;
@@ -71,15 +72,27 @@ export class PaginatedTable extends OGSComponent<PaginatedTableProperties, any> 
             page: this.props.startingPage || 1,
             num_pages: 0,
             page_size: 1,
+            orderBy: this.props.orderBy,
         };
     }
 
     componentDidMount() {
-        super.componentDidMount();
         this.setState({
             page_size: this.props.pageSize || (this.props.name ? data.get(`paginated-table.${this.props.name}.page_size`) : 0) || 10,
         });
         this.filter = this.props.filter || {};
+        this.update_source();
+        setTimeout(() => this.update(), 1);
+    }
+
+    componentDidUpdate(prevProps) {
+        if (this.props.source !== prevProps.source) {
+            this.update_source();
+        }
+        setTimeout(() => this.update(), 1);
+    }
+
+    update_source = () => {
         if (typeof(this.props.source) === "string") {
             this.source_url = this.props.source as string;
             this.source_method = this.props.method || "get";
@@ -87,7 +100,10 @@ export class PaginatedTable extends OGSComponent<PaginatedTableProperties, any> 
         } else {
             this.source_function = this.props.source as SourceFunction;
         }
-        setTimeout(() => this.update(), 1);
+    }
+
+    shouldComponentUpdate(nextProps, nextState) {
+        return !deepCompare(this.props, nextProps) || !deepCompare(this.state, nextState);
     }
 
     setPageSize(n: number|string) {
@@ -121,15 +137,15 @@ export class PaginatedTable extends OGSComponent<PaginatedTableProperties, any> 
             query[k] = filter[k];
         }
         //console.log(query);
-        let order_by = this.props.orderBy ? this.props.orderBy.concat(sorting || []) : sorting || [];
+        let order_by = (this.state.orderBy ? this.state.orderBy : (sorting || []));
 
         if (order_by.length) {
             query["ordering"] = order_by.join(",");
         }
         if (this.source_method === "get") {
-            return get(this.source_url, query);
+            return get(this.source_url, query); // TODO: Check the URLs and typify the result
         }
-        return post(this.source_url, query);
+        return post(this.source_url, query); // TODO: Check the URLs and typify the result again
     }
 
 
@@ -206,6 +222,61 @@ export class PaginatedTable extends OGSComponent<PaginatedTableProperties, any> 
         $(ev.target).select();
     }
 
+    _sort = (order_by) => {
+        if (this.ordersMatch(order_by, this.state.orderBy)) {
+            order_by = this.reverseOrder(this.state.orderBy);
+        }
+        this.setState({
+            orderBy: order_by
+        });
+        setTimeout(() => this.update(), 1);
+    }
+
+    ordersMatch(order1, order2) {
+        let match = true;
+        if (order1.length === order2.length) {
+            for (let i in order1) {
+                if (order1[i].replace("-", "") !== order2[i].replace("-", "")) {
+                    match = false;
+                    break;
+                }
+            }
+        } else {
+            match = false;
+        }
+        return match;
+    }
+
+    reverseOrder(order) {
+        let new_order_by = [];
+        for (let str of order) {
+            new_order_by.push(str.indexOf("-") === 0 ? str.substr(1) : "-" + str);
+        }
+        return new_order_by;
+    }
+
+    getHeader(order, header) {
+        let el;
+        if (order && order.length > 0) {
+            let clsName = "";
+            if (this.ordersMatch(this.state.orderBy, order)) {
+                let minus = false;
+                for (let o of this.state.orderBy) {
+                    if (o.indexOf("-") === 0) {
+                        minus = true;
+                        break;
+                    }
+                }
+                clsName = "fa fa-sort-" + (minus ? "down" : "up");
+            } else {
+                clsName = "fa fa-sort";
+            }
+            el = (<a className="sort-link">{header} <i className={clsName}/></a>);
+        } else {
+            el = header;
+        }
+        return el;
+    }
 
     render() {
         function cls(row, column): string {
@@ -253,18 +324,18 @@ export class PaginatedTable extends OGSComponent<PaginatedTableProperties, any> 
                 <table className={extra_classes}>
                     <thead>
                         <tr>
-                            {columns.map((column, c) => <th key={this.key("th", c)} className={cls(null, column)} {...column.headerProps}>{column.header}</th>)}
+                            {columns.map((column, idx) => <th key={idx} className={cls(null, column)} {...column.headerProps} onClick={column.orderBy ? () => {this._sort(column.orderBy); } : null}>{this.getHeader(column.orderBy, column.header)}</th>)}
                         </tr>
                     </thead>
                     <tbody>
                         {this.state.rows.map((row, i) => {
-                            let cols = columns.map((column, c) => (
-                                <td key={this.key("td", row.id, c)} className={cls(row, column)} {...column.cellProps}>{column_render(column, row)}</td>
+                            let cols = columns.map((column, idx) => (
+                                <td key={idx} className={cls(row, column)} {...column.cellProps}>{column_render(column, row)}</td>
                             ));
                             if (this.props.onRowClick) {
-                                return (<tr key={this.key("tr", row.id)} onClick={(ev) => this.props.onRowClick(row)}>{cols}</tr>);
+                                return (<tr key={row.id} onMouseUp={(ev) => this.props.onRowClick(row, ev)}>{cols}</tr>);
                             } else {
-                                return (<tr key={this.key("tr", row.id)}>{cols}</tr>);
+                                return (<tr key={row.id}>{cols}</tr>);
                             }
                         })}
                         {blank_rows}
@@ -278,7 +349,7 @@ export class PaginatedTable extends OGSComponent<PaginatedTableProperties, any> 
                                 onChange={this._setPage}
                                 onFocus={this._select}
                                 value={this.state.page}/>
-                                <span className="of"> {_("of")} </span><span className="total">{this.state.num_pages}</span>
+                                <span className="of"> /  </span><span className="total">{this.state.num_pages}</span>
                             {this.state.page < this.state.num_pages ? <i className="fa fa-step-forward" onClick={() => this.setPage(this.state.page + 1)}/> : <i className="fa"/>}
                         </div>
                         <div className="right">
