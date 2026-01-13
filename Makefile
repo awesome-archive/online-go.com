@@ -1,24 +1,48 @@
 NODE_PATH:=node_modules:$(NODE_PATH)
 PATH:=node_modules/.bin/:$(PATH)
 
-dev: node_modules
-	NODE_PATH=$(NODE_PATH) PATH=$(PATH) supervisor -w Gulpfile.js,webpack.config.js,tsconfig.json supervisor -w Gulpfile.js -x gulp --
+dev: node_modules .husky
+	npm run dev
+	
+build:
+	npm run build
 
-node_modules:
-	npm install yarn
-	npm install supervisor
-	NODE_PATH=$(NODE_PATH) PATH=$(PATH) yarn install
+build-i18n:
+	npm run build:i18n
 
-lint tslint:
-	NODE_PATH=$(NODE_PATH) PATH=$(PATH) tslint --type-check --project tsconfig.json
+local-dev: node_modules .husky
+	export OGS_BACKEND=LOCAL && npm run dev
 
-min:
-	NODE_PATH=$(NODE_PATH) PATH=$(PATH) PRODUCTION=true webpack --optimize-minimize --devtool=source-map --display-modules --output-filename 'ogs.min.js' 
-	NODE_PATH=$(NODE_PATH) PATH=$(PATH) gulp min_styl
-	@echo 'gzipped ogs.min.js: ' `gzip -9 dist/ogs.min.js -c | wc -c`
-	@echo 'gzipped ogs.min.css: ' `gzip -9 dist/ogs.min.css -c | wc -c`
+bot-dev: node_modules .husky
+	OGS_BACKEND=LOCAL OGS_PORT=8085 npm run dev
 
+point-to-production: node_modules .husky
+	export OGS_BACKEND=PRODUCTION && npm run dev
 
-.PHONY: dev lint tslint min
+stage1-dev: node_modules .husky
+	export OGS_BACKEND=LOCAL OGS_PORT=8001 && npm run dev
+
+stage2-dev: node_modules .husky
+	export OGS_BACKEND=LOCAL OGS_PORT=8002 && npm run dev
+
+.husky: 
+	npx husky install
+
+node_modules: package.json
+	npm ls yarn || npm install yarn
+	yarn install
+
+pretty prettier lint-fix:
+	npm run prettier
+	npm run lint:fix
+	
+
+analyze visualizer bundle-visualizer:
+	npm run bundle-visualizer
+
+test:
+	npm run test
+
+.PHONY: dev build test analyze pretty prettier lint-fix .husky visualizer bundle-visualizer
 
 -include Makefile.production

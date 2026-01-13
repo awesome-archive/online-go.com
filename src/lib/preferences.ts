@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2012-2017  Online-Go.com
+ * Copyright (C)  Online-Go.com
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU Affero General Public License as
@@ -15,117 +15,443 @@
  * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
 
-import data from "data";
-import {Listener} from "data";
-import {GoThemes} from "goban";
+import * as data from "@/lib/data";
+import {
+    GobanSelectedThemes,
+    Goban,
+    LabelPosition,
+    JGOFTimeControlSpeed,
+    Size,
+    ShadowTheme,
+} from "goban";
+import * as React from "react";
+import { current_language } from "@/lib/translate";
+import { DataSchema } from "./data_schema";
+import { FollowedChannel } from "@/views/GoTV";
+import { getWindowWidth } from "./device";
 
-let defaults = {
-    "one-click-submit-live": true,
-    "double-click-submit-live": false,
-    "one-click-submit-correspondence": false,
-    "double-click-submit-correspondence": false,
-    "label-positioning": "all",
-    "game-list-threshold": 10,
-    "show-move-numbers": true,
-    "show-variation-move-numbers": false,
+export const defaults = {
+    "ai-review-enabled": true,
+    "ai-review-use-score": true,
+    "ai-review-categorization-method": "old" as "old" | "new",
+    "ai-review-score-diff-thresholds": {
+        Excellent: 0.2,
+        Great: 0.6,
+        Good: 1.0,
+        Inaccuracy: 2.0,
+        Mistake: 5.0,
+    },
+    "ai-summary-table-show": false,
+    "always-disable-analysis": false,
+    "asked-to-enable-desktop-notifications": false,
     "auto-advance-after-submit": true,
-    "notification-timeout": 10,
+    "autofocus-submit-button": false,
     "autoplay-delay": 10000,
-
-    "sound-enabled": true,
-    "sound-volume": 0.5,
-    "sound-voice-countdown": true,
-
-
-    "goban-theme-board": null,
-    "goban-theme-black": null,
-    "goban-theme-white": null,
-
-    "language": "auto",
-    "profanity-filter": {"en": true, "locale": true},
-    "chat.user-sort-order": "rank",
+    "play.tab": "automatch" as "automatch" | "custom",
+    "automatch.size": "9x9" as Size,
+    "automatch.speed": "rapid" as JGOFTimeControlSpeed,
+    "automatch.game-clock": "flexible" as "exact" | "flexible" | "multiple",
+    "automatch.handicaps": "standard" as "enabled" | "standard" | "disabled",
+    "automatch.time-control": "fischer" as "fischer" | "byoyomi",
+    "automatch.opponent": "human" as "human" | "bot",
+    "automatch.bot": 0 as number | string,
+    "automatch.bot-ranked": false as boolean,
+    "automatch.lower-rank-diff": 3,
+    "automatch.upper-rank-diff": 3,
+    "automatch.show-custom-games": false,
+    "automatch.multiple-sizes": { "9x9": false, "13x13": false, "19x19": false },
+    "automatch.multiple-speeds": {
+        "blitz-fischer": false,
+        "blitz-byoyomi": false,
+        "rapid-fischer": false,
+        "rapid-byoyomi": false,
+        "live-fischer": false,
+        "live-byoyomi": false,
+    },
+    "board-labeling": "automatic",
     "chat.show-all-global-channels": true,
     "chat.show-all-group-channels": true,
     "chat.show-all-tournament-channels": true,
-
+    "chat.user-sort-order": "rank",
+    "chat-mode": "main",
+    "desktop-notifications": true,
+    "desktop-notifications-require-interaction": false,
+    "dynamic-title": true,
+    "function-keys-enabled": false,
+    "game-list-threshold": 10,
+    "dock-delay": 0, // seconds.
+    "double-click-submit-correspondence": false,
+    "double-click-submit-live": false,
+    "last-move-opacity": 1.0,
+    "variation-stone-opacity": 0.6,
+    "variation-move-count": 10,
+    "visual-undo-request-indicator": true,
+    "stone-font-scale": 1.0,
+    "goban-theme-black": null as null | string,
+    "goban-theme-board": null as null | string,
+    "goban-theme-white": null as null | string,
+    //"goban-theme-black_stone_url": null as null | string,
+    //"goban-theme-white_stone_url": null as null | string,
+    "goban-theme-removal-graphic": "square" as "square" | "x",
+    "goban-theme-removal-scale": 0.9,
+    "goban-theme-stone-shadows": "default" as ShadowTheme,
+    "goban-theme-custom-black-shadow-color": "#000000",
+    "goban-theme-custom-black-shadow-gradient": "rotate(45) scale(1.10 1.0) translate(0.05 -0.50)",
+    "goban-theme-custom-white-shadow-color": "#000000",
+    "goban-theme-custom-white-shadow-gradient": "rotate(45) scale(1.10 1.0) translate(0.05 -0.50)",
+    "goban-theme-custom-board-background": "#DCB35C",
+    "goban-theme-custom-board-url": "",
+    "goban-theme-custom-board-line": "#000000",
+    "goban-theme-custom-black-stone-color": "#000000",
+    "goban-theme-custom-black-url": "",
+    "goban-theme-custom-white-stone-color": "#ffffff",
+    "goban-theme-custom-white-url": "",
+    "hide-ranks": false,
+    "label-positioning": "all" as LabelPosition,
+    "label-positioning-puzzles": "all" as LabelPosition,
+    language: "auto",
+    "move-tree-numbering": "move-number" as "none" | "move-coordinates" | "move-number",
+    "new-game-board-size": 19,
+    "notification-timeout": 10,
+    "notify-on-incident-report": true,
+    "hide-incident-reports": false,
+    "hide-claimed-reports": false,
+    "show-cm-reports": false,
     "observed-games-page-size": 9,
     "observed-games-viewing": "live",
-
-    "new-game-board-size": 19,
-
-    "tournaments-tab": "correspondence",
-    "move-tree-numbering": "move-number",
-
+    "observed-games-filter": {},
+    "observed-games-force-list": false,
+    "one-click-submit-correspondence": false,
+    "one-click-submit-live": true,
+    "profanity-filter": { en: true } as { [cc: string]: true },
     "puzzle.randomize.color": true,
     "puzzle.randomize.transform": true,
     "puzzle.zoom": true,
+    "rating-graph-always-use": false,
+    "rating-graph-plot-by-games": false,
+    "show-all-challenges": false,
+    "show-unranked-challenges": true,
+    "show-ranked-challenges": true,
+    "show-19x19-challenges": true,
+    "show-13x13-challenges": true,
+    "show-9x9-challenges": true,
+    "show-other-boardsize-challenges": true,
+    "show-rengo-challenges": true,
+    "show-handicap-challenges": true,
+    "show-move-numbers": true,
+    "show-offline-friends": true,
+    "show-ratings-in-rating-grid": false,
+    "show-seek-graph": false,
+    "show-rank-distribution-graph": false,
+
+    "show-tournament-indicator": true, // implicitly on desktop
+    "show-tournament-indicator-on-mobile": false,
+    "show-variation-move-numbers": true,
+    "show-slow-internet-warning": true,
+
+    "sound-voice-countdown-main": false,
+    "sound-voice-countdown": true,
+
+    "sound.volume.master": 1.0,
+
+    "sound.countdown.tick-tock.start": 0,
+    "sound.countdown.ten-seconds.start": 10,
+    "sound.countdown.five-seconds.start": 10,
+    "sound.countdown.every-second.start": 10,
+    "sound.countdown.byoyomi-direction": "auto",
+    "sound.vibrate-on-stone-placement": true,
+    "sound.vibrate-on-game-start": true,
+    "sound.positional-stone-placement-effect": true,
+
+    "supporter.currency": "auto",
+    "supporter.interval": "month",
+    "tournaments-tab": "schedule" as
+        | "my-tournaments"
+        | "schedule"
+        | "live"
+        | "archive"
+        | "correspondence",
+    "tournaments-show-all": false,
+    "translation-dialog-dismissed": 0,
+    "translation-dialog-never-show": false,
+    "unicode-filter": false,
+    "variations-in-chat-enabled": true,
+    "start-in-zen-mode": false,
+    "scroll-to-navigate": false,
+    "show-empty-chat-notification": true,
+    "chat-subscribe-group-chat-unread": true,
+    "chat-subscribe-group-mentions": true,
+    "chat-subscribe-tournament-chat-unread": true,
+    "chat-subscribe-tournament-mentions": true,
+
+    "mute-stream-announcements": false,
+    "mute-event-announcements": false,
+
+    "moderator.join-games-anonymously": true,
+    "moderator.hide-flags": false,
+    "moderator.hide-profile-information": false, // hide extra moderator information
+    "moderator.report-quota": 10,
+    "moderator.report-settings": {} as {
+        [category: string]: {
+            priority: number;
+            visible: boolean;
+        };
+    },
+    "moderator.report-sort-order": "oldest-first" as "oldest-first" | "newest-first",
+    "moderator.hide-player-card-mod-controls": false,
+    "moderator.prefer-incident-list": false,
+
+    "table-color-default-on": false,
+
+    "game-history-size-filter": "all",
+    "game-history-ranked-filter": "all",
+
+    "help-system-enabled": true,
+
+    "sgf.sort-order": "date_added",
+    "sgf.sort-descending": true,
+
+    "analysis.pencil-color": "#004cff",
+    "analysis.score-color": "#3ACC2B",
+
+    "gotv.expand-chat-pane": false,
+    "gotv.show-gotv-indicator": true,
+    "gotv.auto-select-top-stream": true,
+    "gotv.allow-mature-streams": false,
+    "gotv.selected-languages": [""],
+    "gotv.allow-notifications": true,
+    "gotv.user-access-token": "",
+    "gotv.followed-channels": [] as FollowedChannel[],
+    "gotv.notified-streams": [] as { streamId: string; timestamp: number }[],
+
+    "user-history.show-mod-log": false,
+    "user-history.warnings-only": false,
+    "debug.test-wanted": false,
+    "learning-hub-expanded-section": "Fundamentals",
+
+    "bot.challenge-level": 2 as 1 | 2 | 3,
+    "bot.slug": "" as string,
+    "bot.color": "random" as "random" | "white" | "black",
+    "bot.last-selected-id": undefined as string | number | undefined,
 };
 
-for (let k in defaults) {
-    data.setDefault(`preferences.${k}`, defaults[k]);
+defaults["profanity-filter"][current_language] = true;
+
+for (const k in defaults) {
+    data.setDefault(`preferences.${k as ValidPreference}`, (defaults as any)[k]);
 }
 
+type PreferencesType = typeof defaults;
+export type ValidPreference = keyof typeof defaults;
 
+export function get<KeyT extends ValidPreference>(key: KeyT): PreferencesType[KeyT] {
+    if (!(key in defaults)) {
+        if ((key as string) === "sound-volume") {
+            console.error(
+                "You have an extension installed that is not using the newer sound system, volume will not be controllable",
+            );
+            // This should never happen according to the type system, so we have
+            // to type it as any in order to suppress an error.
+            return 1.0 as any;
+        }
 
-export function get(key: string): any {
-    return data.ensureDefaultAndGet(`preferences.${key}`);
+        throw new Error(`Undefined default: ${key}`);
+    }
+    // I can't figure out why TypeScript doesn't like this, but I think it's better
+    // to define the type in terms of Preferences instead of DataSchema.
+    return data.get(`preferences.${key}`) as any;
 }
-export function set(key: string, value: any): any {
-    return data.set(`preferences.${key}`, value);
+export function set<KeyT extends ValidPreference>(
+    key: KeyT,
+    value: PreferencesType[KeyT],
+    replication?: data.Replication,
+): DataSchema[`preferences.${KeyT}`] {
+    return data.set(
+        `preferences.${key}`,
+        value as any,
+        replication,
+    ) as DataSchema[`preferences.${KeyT}`];
 }
-export function watch(key: string, cb: (d: any, key?: string) => void, call_on_undefined?: boolean): Listener {
-    return data.watch(`preferences.${key}`, cb, call_on_undefined);
+export function setWithoutEmit<KeyT extends ValidPreference>(
+    key: KeyT,
+    value: PreferencesType[KeyT],
+): DataSchema[`preferences.${KeyT}`] {
+    return data.setWithoutEmit(
+        `preferences.${key}`,
+        value as any,
+    ) as DataSchema[`preferences.${KeyT}`];
+}
+export function watch<KeyT extends ValidPreference>(
+    key: KeyT,
+    cb: (d: PreferencesType[KeyT]) => void,
+    call_on_undefined?: boolean,
+    dont_call_immediately?: boolean,
+): void {
+    data.watch(`preferences.${key}`, cb as any, call_on_undefined, dont_call_immediately);
+}
+export function unwatch<KeyT extends ValidPreference>(
+    key: KeyT,
+    cb: (d: PreferencesType[KeyT]) => void,
+): void {
+    data.unwatch(`preferences.${key}`, cb as any);
 }
 
 export function dump(): void {
     data.dump("preferences.", true);
 }
 
-export function getSelectedThemes() {
-    //let default_plain = $.browser.mobile || ($(window).width() * (window.devicePixelRatio || 1)) <= 768;
-    let default_plain = ($(window).width() * (window.devicePixelRatio || 1)) <= 768;
+export function getSelectedThemes(): GobanSelectedThemes {
+    let default_plain = getWindowWidth() * (window.devicePixelRatio || 1) <= 768;
+    if (data.get("user").anonymous || data.get("user").id > 1618000) {
+        default_plain = true;
+    }
 
     let board = get("goban-theme-board") || (default_plain ? "Plain" : "Kaya");
+    //let white = get("goban-theme-white") || (default_plain ? "Plain" : "Plain");
+    //let black = get("goban-theme-black") || (default_plain ? "Plain" : "Plain");
     let white = get("goban-theme-white") || (default_plain ? "Plain" : "Shell");
     let black = get("goban-theme-black") || (default_plain ? "Plain" : "Slate");
+    const removal_graphic = get("goban-theme-removal-graphic");
+    const removal_scale = get("goban-theme-removal-scale");
+    const stone_shadows = get("goban-theme-stone-shadows");
+    const custom_black_shadow_color = get("goban-theme-custom-black-shadow-color");
+    const custom_black_shadow_gradient = get("goban-theme-custom-black-shadow-gradient");
+    const custom_white_shadow_color = get("goban-theme-custom-white-shadow-color");
+    const custom_white_shadow_gradient = get("goban-theme-custom-white-shadow-gradient");
 
-    if (!(board in GoThemes["board"])) { board = default_plain ? "Plain" : "Kaya"; }
-    if (!(white in GoThemes["white"])) { white = default_plain ? "Plain" : "Shell"; }
-    if (!(black in GoThemes["black"])) { black = default_plain ? "Plain" : "Slate"; }
+    if (!(board in Goban.THEMES["board"])) {
+        board = default_plain ? "Plain" : "Kaya";
+    }
+    if (!(white in Goban.THEMES["white"])) {
+        //white = default_plain ? "Plain" : "Plain";
+        white = default_plain ? "Plain" : "Shell";
+    }
+    if (!(black in Goban.THEMES["black"])) {
+        console.log("Theme ", black, "didn't exist, so resetting");
+        //black = default_plain ? "Plain" : "Plain";
+        black = default_plain ? "Plain" : "Slate";
+    }
 
     return {
-        "board": board,
-        "white": white,
-        "black": black
+        board: board,
+        white: white,
+        black: black,
+        "removal-graphic": removal_graphic as any,
+        "removal-scale": removal_scale,
+        "stone-shadows": stone_shadows,
+        "custom-shadow-config": {
+            black: {
+                shadow_color: custom_black_shadow_color,
+                gradientTransform: custom_black_shadow_gradient,
+            },
+            white: {
+                shadow_color: custom_white_shadow_color,
+                gradientTransform: custom_white_shadow_gradient,
+            },
+        },
     };
 }
 
-export function watchSelectedThemes(cb) {
+export function watchSelectedThemes(cb: (themes: GobanSelectedThemes) => void) {
     let dont_call_right_away = true;
-    let call_cb = () => {
+    const call_cb = () => {
         if (dont_call_right_away) {
             return;
         }
+
         cb(getSelectedThemes());
     };
 
-    let a = watch("goban-theme-board", call_cb);
-    let b = watch("goban-theme-black", call_cb);
     dont_call_right_away = false;
-    let c = watch("goban-theme-white", call_cb);
+    const keys: (keyof PreferencesType)[] = [
+        "goban-theme-board",
+        "goban-theme-black",
+        "goban-theme-white",
+        "goban-theme-removal-graphic",
+        "goban-theme-removal-scale",
+        "goban-theme-stone-shadows",
+        "goban-theme-custom-black-shadow-color",
+        "goban-theme-custom-black-shadow-gradient",
+        "goban-theme-custom-white-shadow-color",
+        "goban-theme-custom-white-shadow-gradient",
+        "goban-theme-custom-board-background",
+        "goban-theme-custom-board-url",
+        "goban-theme-custom-board-line",
+        "goban-theme-custom-black-stone-color",
+        "goban-theme-custom-black-url",
+        "goban-theme-custom-white-stone-color",
+        "goban-theme-custom-white-url",
+    ];
+
+    for (const key of keys) {
+        watch(key, call_cb);
+    }
+
     return {
         remove: () => {
-            a.remove();
-            b.remove();
-            c.remove();
-        }
+            for (const key of keys) {
+                unwatch(key, call_cb);
+            }
+        },
     };
 }
 
+/**
+ * A custom React hook that returns a state variable and a function that can be
+ * used to set both the state and the preference at the same time.
+ *
+ * @param key a preference (as one would use in `preferences.get(key)`)
+ */
+export function usePreference<KeyT extends ValidPreference>(
+    key: KeyT,
+): [PreferencesType[KeyT], (v: PreferencesType[KeyT]) => void] {
+    const [value, stateSetter] = React.useState(get(key));
 
-export default window["preferences"] = {
-    get: get,
-    set: set,
-    watch: watch,
-    dump: dump,
-};
+    const setStateAndPreference = (v: PreferencesType[KeyT]) => {
+        stateSetter(v);
+        set(key, v);
+    };
+
+    React.useEffect(() => {
+        const cb = (v: PreferencesType[KeyT]) => {
+            stateSetter(v);
+        };
+        watch(key, cb);
+        return () => {
+            unwatch(key, cb);
+        };
+    }, [key]);
+
+    return [value, setStateAndPreference];
+}
+
+function migrate() {
+    function migrate_key(from: string, to: keyof PreferencesType) {
+        try {
+            if (data.get(from as keyof DataSchema, null) !== null) {
+                set(to, data.get(from as any) || "");
+                data.remove(from as any);
+            }
+        } catch (e) {
+            console.log(e);
+        }
+    }
+
+    // Migrate old goban theme preferences to a consistent place
+    // Introduced 2024-08-06, safe for removal 2025-03-01
+    migrate_key("custom.black", "goban-theme-custom-black-stone-color");
+    migrate_key("custom.white", "goban-theme-custom-white-stone-color");
+    migrate_key("custom.board", "goban-theme-custom-board-background");
+    migrate_key("custom.line", "goban-theme-custom-board-line");
+    migrate_key("custom.url", "goban-theme-custom-board-url");
+    migrate_key("custom.black_stone_url", "goban-theme-custom-black-url");
+    migrate_key("custom.white_stone_url", "goban-theme-custom-white-url");
+    migrate_key("preferences.goban-theme-black_stone_url", "goban-theme-custom-black-url");
+    migrate_key("preferences.goban-theme-white_stone_url", "goban-theme-custom-white-url");
+}
+
+try {
+    migrate();
+} catch (e) {
+    console.error(e);
+}

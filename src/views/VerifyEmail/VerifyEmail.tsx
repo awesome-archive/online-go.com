@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2012-2017  Online-Go.com
+ * Copyright (C)  Online-Go.com
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU Affero General Public License as
@@ -15,58 +15,56 @@
  * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
 
+import * as data from "@/lib/data";
+import { parse } from "query-string";
 import * as React from "react";
-import {Link} from "react-router";
-import {post} from "requests";
-import {_, pgettext, interpolate} from "translate";
-import data from "data";
+import { useLocation } from "react-router-dom";
+import { post } from "@/lib/requests";
+import { _ } from "@/lib/translate";
+import { errorAlerter } from "@/lib/misc";
 
-declare var swal;
+export function VerifyEmail() {
+    const location = useLocation();
+    const [verifying, setVerifying] = React.useState(true);
+    const [message, setMessage] = React.useState<string>();
+    const [isError, setIsError] = React.useState(false);
 
-interface VerifyEmailProps {
-    params: any;
-    location: any;
-}
+    React.useEffect(() => {
+        const q = parse(location.search);
 
-export class VerifyEmail extends React.PureComponent<VerifyEmailProps, any> {
-    constructor(props) {
-        super(props);
-        this.state = {
-            verifying: true,
-            message: null,
-        };
-    }
-
-    componentDidMount() {
-        post('me/validateEmail', {
-            id: this.props.location.query.id,
-            verification: this.props.location.query.v,
+        post("me/validateEmail", {
+            id: q["id"],
+            verification: q["v"],
         })
-        .then(() => {
-            this.setState({verifying: false, message: _("Great, your email address has been verified!")});
-            let user = data.get('user');
-            user.email_validated = new Date().toString();
-            data.set('user', user);
-        })
-        .catch((err) => {
-            this.setState({verifying: false, message: JSON.parse(err.responseText).error});
-        });
-    }
+            .then(() => {
+                setVerifying(false);
+                setIsError(false);
+                setMessage(_("Great, your email address has been verified!"));
+                const user = data.get("user");
+                user.email_validated = new Date().toString();
+                data.set("user", user);
+            })
+            .catch((err) => {
+                setVerifying(false);
+                setIsError(true);
+                errorAlerter(err);
+                try {
+                    const errorData = JSON.parse(err.responseText);
+                    setMessage(errorData.error || _("Failed to verify email address"));
+                } catch {
+                    setMessage(_("Failed to verify email address"));
+                }
+            });
+    }, [location.search]);
 
-    render() {
-        return (
-            <div className='VerifyEmail'>
-                <h3>
-                    {this.state.verifying &&
-                        <div>
-                            {_("Verifying...")}
-                        </div>
-                    }
-                    {this.state.message &&
-                        <div>{this.state.message}</div>
-                    }
-                </h3>
-            </div>
-        );
-    }
+    return (
+        <div className="VerifyEmail">
+            <h3>
+                {verifying && <div>{_("Verifying...")}</div>}
+                {message && (
+                    <div className={isError ? "error-message" : "success-message"}>{message}</div>
+                )}
+            </h3>
+        </div>
+    );
 }

@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2012-2017  Online-Go.com
+ * Copyright (C)  Online-Go.com
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU Affero General Public License as
@@ -14,13 +14,24 @@
  * You should have received a copy of the GNU Affero General Public License
  * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
-
 .GobanLineSummaryContainer {
-    //display: table
-    width: 100%;
-    max-width: 100vw;
+    // display: table
+    width: auto;
+    max-width: max-content;
     overflow-x: auto;
+    // margin-left: auto;
+    // margin-right: auto;
 }
+
+.GobanLineSummary {
+    themed: color fg;
+
+    &:hover {
+        text-decoration: none;
+        themed: color fg;
+    }
+}
+
 .GobanLineSummary, .GobanLineSummaryContainerHeader {
     display: table-row;
 
@@ -29,6 +40,10 @@
         padding-left: 0.5rem;
         padding-right: 0.5rem;
     }
+}
+
+.dropped-rengo {
+    text-align: center;
 }
 
 .GobanLineSummaryContainerHeader {
@@ -41,25 +56,34 @@
     }
 
     .current-users-move {
-        themed background-color miniboard-to-move;
+        themed: background-color miniboard-to-move;
+    }
+
+    .viewed-users-move {
+        themed: background-color miniboard-viewed-to-move;
     }
 
     .game-name, .player {
         text-align: left;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+        max-width: 13em;
     }
 
     &.in-stone-removal-phase {
-        themed background-color miniboard-stone-removal
+        themed: background-color miniboard-stone-removal;
     }
+
     &:hover {
-        themed background-color miniboard-hover
+        themed: background-color miniboard-hover;
     }
 
     &.in-stone-removal-phase:hover {
-        themed background-color miniboard-stone-removal-hover
+        themed: background-color miniboard-stone-removal-hover;
     }
 
-    &.finished{
+    &.finished {
         opacity: 0.8;
     }
 
@@ -69,4 +93,3 @@
         margin: 2em;
     }
 }
-

@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2012-2017  Online-Go.com
+ * Copyright (C)  Online-Go.com
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU Affero General Public License as
@@ -16,40 +16,52 @@
  */
 
 import * as React from "react";
-import {Link, browserHistory} from "react-router";
-import {_, pgettext, interpolate} from "translate";
-import data from "data";
+import { browserHistory } from "@/lib/ogsHistory";
+import { _ } from "@/lib/translate";
+import * as data from "@/lib/data";
+import { Card } from "@/components/material";
 
-interface EmailBannerProperties {
-}
-
-
-export class EmailBanner extends React.PureComponent<EmailBannerProperties, any> {
-    constructor(props) {
+export class EmailBanner extends React.PureComponent {
+    constructor(props: {}) {
         super(props);
-        this.state = {
-
-        };
+        // TODO: Remove this
+        this.state = {};
     }
 
     viewSettings = () => {
-        browserHistory.push('/user/settings');
-    }
+        browserHistory.push("/user/settings");
+    };
+
+    dismiss = () => {
+        data.set("email-banner-dismissed", true);
+        this.forceUpdate();
+    };
 
     render() {
-        if (data.get('user').email_validated) {
+        if (data.get("user").email_validated) {
+            return null;
+        }
+
+        if (data.get("email-banner-dismissed")) {
             return null;
         }
 
         return (
             <div className="EmailBanner-container">
-                <div className="EmailBanner">
-                    {_("Welcome to OGS! Feel free to start playing games. In an effort to reduce spam and limit trolls, chat is disabled for all users until their email address has been validated. To validate your email address, simply click the activation link that has been sent to you.")}
-                    <br/>
-                    <br/>
-                    {_("You can visit the settings page to update your email address or resend the validation email.")}
-                    <button className='primary' onClick={this.viewSettings}>{_("Go to settings")} &rarr;</button>
-                </div>
+                <Card className="EmailBanner">
+                    <i className="fa fa-times" onClick={this.dismiss} />
+                    {_(
+                        "Welcome to OGS! Feel free to start playing games. In an effort to reduce spam and limit trolls, chat is disabled for all users until their email address has been validated. To validate your email address, simply click the activation link that has been sent to you.",
+                    )}
+                    <br />
+                    <br />
+                    {_(
+                        "You can visit the settings page to update your email address or resend the validation email.",
+                    )}
+                    <button className="primary" onClick={this.viewSettings}>
+                        {_("Go to settings")} &rarr;
+                    </button>
+                </Card>
             </div>
         );
     }

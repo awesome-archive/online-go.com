@@ -1,0 +1,15 @@
+section.right { /* NavBar changeable icons and user name */
+  visibility: hidden !important;
+}
+
+.username, .Player, .PlayerIcon { /* hide the username, player icon, and player name */
+  visibility: hidden !important;
+}
+
+.ObserveGames { 
+  visibility: hidden !important;
+}
+
+.announcement {
+  visibility: hidden !important;
+}
